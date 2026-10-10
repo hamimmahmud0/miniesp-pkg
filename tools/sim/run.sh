@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage: tools/sim/run.sh [DAYS]   (MINIESP=/path/to/miniesp, default: the parent directory)
+# usage: tools/sim/run.sh [DAYS [DRY_AFTER_DAYS]]  (the second argument makes the pump deliver only 2 L/min from that day on: a dry-run test)   (MINIESP=/path/to/miniesp, default: the parent directory)
 set -euo pipefail
 cd "$(dirname "$0")"
 MINIESP=${MINIESP:-$(cd ../../.. && pwd)}
@@ -15,4 +15,4 @@ PY
 sed "s#/home/hamim-mahmud/Workspace/miniesp/miniesp-pkg/programs/wtms.c#$(cd ../../programs && pwd)/wtms.c#" wtms_sim.c > build/sim.c
 gcc -O1 -w -Ibuild -o build/sim build/sim.c -lm
 START=$(( $(date +%s) / 5 * 5 - ${1:-12} * 86400 ))
-build/sim "${1:-12}" "$START"
+build/sim "${1:-12}" "$START" ${2:+"$2"}

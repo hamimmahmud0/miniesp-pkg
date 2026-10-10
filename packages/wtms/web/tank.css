@@ -120,3 +120,10 @@ p.note{margin:16px 2px 0}
 @media(max-width:520px){.tiles{grid-template-columns:1fr 1fr}.tile2{padding:10px 12px}.tile2 b{font-size:18px}.chartbox canvas{height:230px}.card>.toolbar{margin-left:12px;margin-right:12px}}
 body:has(.wrap.wide) .bar{max-width:1240px}
 .tip .mu{color:var(--mute)}
+.alerts{display:grid;gap:8px;margin-bottom:16px}
+.alert{background:color-mix(in srgb,var(--bad) 14%,var(--card));border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));color:var(--fg);border-radius:10px;padding:10px 14px}
+.alert b{color:var(--bad);margin-right:4px}
+.checks{display:grid;gap:10px;margin-bottom:6px}
+.chk{display:flex;gap:10px;align-items:flex-start}.chk .dot{margin-top:7px}.chk b{font-weight:600}
+.exp{margin-top:12px}
+.card .row input[type=number]{max-width:120px;justify-self:end}

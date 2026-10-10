@@ -20,6 +20,7 @@
 //   on_pct=25 off_pct=95     start the pump at/below on_pct, stop at/above off_pct
 //   max_run=30               stop (and latch a fault) after this many minutes of pumping
 //   rest=5                   minimum minutes between runs     flow_min=3 rise_pm=10   fault "no_flow" if the level rose < rise_pm/10 % in flow_min minutes
+//   min_in=0                 fault "no_flow" instead if the pump's intake (litres in the run so far, per minute) is below min_in/10 L/min after flow_min minutes (dry pump, closed valve, clogged filter); 0 = use rise_pm
 //   auto=1                   automatic pump control           hist=300  seconds between history samples      ha=homeassistant  discovery prefix ("" = off)
 //
 // Safety: the pump is re-commanded ON every cycle while it should run, so a relay-node auto-off timer of ~60 s turns it off by itself if this
@@ -31,12 +32,12 @@ typedef struct { const char *k; void *p; int n; } ik;       // n == 0: int, else
 static char c_name[24] = "tank1", c_pump[64] = "relay_node_1/relay/waterpump", c_ha[24] = "homeassistant";
 static int c_trig = 33, c_echo = 32, c_temp = 0, c_empty = 1379, c_full = 205, c_vol = 1000, c_ml = 8517, c_on = 25, c_off = 95;
 static int c_maxrun = 30, c_rest = 5, c_flowmin = 3, c_rise = 10, c_auto = 1, c_hist = 300;
-static int c_interval = 15, c_samples = 7, c_jump = 15, c_goodn = 3, c_histkb = 32, c_tempc = 20;
+static int c_minin = 0, c_interval = 15, c_samples = 7, c_jump = 15, c_goodn = 3, c_histkb = 32, c_tempc = 20;
 static const ik CFG[] = {
     { "name", c_name, sizeof c_name }, { "pump", c_pump, sizeof c_pump }, { "ha", c_ha, sizeof c_ha },
     { "trig", &c_trig, 0 }, { "echo", &c_echo, 0 }, { "temp", &c_temp, 0 }, { "empty_mm", &c_empty, 0 }, { "full_mm", &c_full, 0 },
     { "vol_l", &c_vol, 0 }, { "ml_cm", &c_ml, 0 }, { "on_pct", &c_on, 0 }, { "off_pct", &c_off, 0 }, { "max_run", &c_maxrun, 0 }, { "rest", &c_rest, 0 },
-    { "flow_min", &c_flowmin, 0 }, { "rise_pm", &c_rise, 0 }, { "auto", &c_auto, 0 }, { "hist", &c_hist, 0 },
+    { "flow_min", &c_flowmin, 0 }, { "rise_pm", &c_rise, 0 }, { "min_in", &c_minin, 0 }, { "auto", &c_auto, 0 }, { "hist", &c_hist, 0 },
     { "interval", &c_interval, 0 }, { "samples", &c_samples, 0 }, { "jump_pct", &c_jump, 0 }, { "good_n", &c_goodn, 0 }, { "hist_kb", &c_histkb, 0 }, { "temp_c", &c_tempc, 0 },
 };
 static int s_force, s_funtil, s_good, s_ema = -1, s_since, s_start, s_lastoff, s_fault, s_lastrun, s_lasthist, s_disc, s_jumps, s_hold;
@@ -50,7 +51,7 @@ static const ik STT[] = {
     { "dr", &s_dr, 0 }, { "lrl", &s_lrl, 0 }, { "lrs", &s_lrs, 0 }, { "lrt", &s_lrt, 0 },
 };
 #define N(t) ((int)(sizeof(t) / sizeof((t)[0])))
-#define DISC_VER 2
+#define DISC_VER 3
 static int g_quiet;
 static char g_local_cmd[24];                         // command given on the command line / CGI (handled like an MQTT command)
 static const char *FAULTS[] = { "none", "sensor", "max_run", "no_flow" };
@@ -173,7 +174,7 @@ static void append_line(const char *path, const char *old, int max, const char *
 
 // One history sample every `hist` seconds: level, pump state and the water accounting for the interval since the previous sample.
 // Usage: when the pump was idle, the drop in volume (signed, so sensor noise cancels out over a day); while it ran, the recent idle rate is assumed to
-// continue, and the pump's intake is the volume change plus that usage. Row: time,level(0.1%),litres,pump,usage ml/min,pump intake ml/min.
+// continue, and the pump's intake is the volume change plus that usage. Row: time,level(0.1%),litres,pump,usage ml/min (signed),pump intake ml/min.
 static void history(int pm, int pumpon)
 {
     if (!sys_time()) return;
@@ -184,7 +185,7 @@ static void history(int pm, int pumpon)
         int dv = v - (s_pv - 1);
         if (s_pps * 10 < dt) { u = -dv; s_urate = (3 * s_urate + u * 6000 / dt) / 4; }
         else { u = urate() * dt / 6000; in = dv + u; if (in < 0) in = 0; }
-        um = u > 0 ? u * 6000 / dt : 0;
+        um = u * 6000 / dt;                                            // signed on purpose: sensor noise averages out, readers clamp at 0 after averaging
         im = in > 0 && s_pps > 0 ? in * 6000 / s_pps : 0;
     }
     s_lasthist = (int)now;
@@ -223,6 +224,12 @@ static void discovery(void)
     disc("sensor", "distance", "Tank sensor distance", x);
     m_snprintf(x, sizeof x, "\"state_topic\":\"%s/state\",\"value_template\":\"{{ value_json.fault }}\",\"icon\":\"mdi:alert\"", c_name);
     disc("sensor", "fault", "Tank fault", x);
+    m_snprintf(x, sizeof x, "\"state_topic\":\"%s/state\",\"value_template\":\"{{ value_json.use_lpm }}\",\"unit_of_measurement\":\"L/min\",\"state_class\":\"measurement\",\"icon\":\"mdi:water-minus\"", c_name);
+    disc("sensor", "use_rate", "Tank water usage rate", x);
+    m_snprintf(x, sizeof x, "\"state_topic\":\"%s/state\",\"value_template\":\"{{ value_json.in_lpm }}\",\"unit_of_measurement\":\"L/min\",\"state_class\":\"measurement\",\"icon\":\"mdi:water-plus\"", c_name);
+    disc("sensor", "in_rate", "Tank pump intake rate", x);
+    m_snprintf(x, sizeof x, "\"state_topic\":\"%s/state\",\"value_template\":\"{{ value_json.td_use }}\",\"unit_of_measurement\":\"L\",\"device_class\":\"water\",\"state_class\":\"total_increasing\"", c_name);
+    disc("sensor", "used_today", "Tank water used today", x);
     m_snprintf(x, sizeof x, "\"state_topic\":\"%s/auto/state\",\"command_topic\":\"%s/auto/set\",\"icon\":\"mdi:autorenew\"", c_name, c_name);
     disc("switch", "auto", "Tank auto fill", x);
     m_snprintf(x, sizeof x, "\"command_topic\":\"%s/cmd\",\"payload_press\":\"reset\",\"icon\":\"mdi:restart-alert\"", c_name);
@@ -329,7 +336,7 @@ static int run_cycle(void)
             else if (pm >= c_off * 10) stop = 1;
             else if (want_off) { stop = 1; s_hold = (int)now + c_rest * 60; }
             else if (run > (unsigned)c_maxrun * 60) { stop = 1; s_fault = F_MAXRUN; }
-            else if (run >= (unsigned)c_flowmin * 60 && pm - s_start < c_rise) { stop = 1; s_fault = F_NOFLOW; }
+            else if (run >= (unsigned)c_flowmin * 60 && (c_minin > 0 ? pm_run_dl(pm, (int)run) * 6000 / (int)run < c_minin * 100 : pm - s_start < c_rise)) { stop = 1; s_fault = F_NOFLOW; }
             if (stop) { pub(t_set, "OFF", 0); s_since = 0; s_lastoff = (int)now; act = "stop"; }
             else { pub(t_set, "ON", 0); act = "run"; }                          // keep-alive for the relay's auto-off timer
         } else {
@@ -390,6 +397,7 @@ static const char *cfg_validate_save(void)
     if (c_samples < 3 || c_samples > 15) return "samples must be 3..15";
     if (c_jump < 5 || c_jump > 100) return "jump_pct must be 5..100";
     if (c_goodn < 1 || c_goodn > 20) return "good_n must be 1..20";
+    if (c_minin < 0 || c_minin > 2000) return "min_in must be 0..2000 (tenths of L/min)";
     if (c_histkb < 4 || c_histkb > 64) return "hist_kb must be 4..64";
     if (c_tempc < -30 || c_tempc > 60) return "temp_c must be -30..60";
     if (!c_name[0] || !c_pump[0]) return "name and pump must not be empty";

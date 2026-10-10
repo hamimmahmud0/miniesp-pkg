@@ -53,3 +53,10 @@ Edit `programs/wtms.c` (or the pages in `packages/wtms/web/`), run `tools/mkbund
 Tested on hardware: installer end to end, upload verification, service, MQTT publish/subscribe, Home Assistant discovery messages, dashboard/settings/login pages (screenshots at phone and desktop sizes), login/token flow, staged settings save, force OFF/release, pump ON/OFF over MQTT earlier, safe behaviour with no sensor.
 NOT tested: a real HC-SR04 in a tank (level maths, start/stop thresholds, `no_flow` / `max_run` faults, DS18B20), **force ON** on the real pump, relay auto-off arming through the relay node API, tablet-size layout, OTA rollback.
 With no sensor wired the echo pin floats and gives plausible random readings: keep auto-fill off (`wtms config auto=0`) and the service stopped until the sensor is connected.
+
+## More in 1.2
+- **Pump intake trend** chart (L/min per run with a trend line) and a "Pump intake" check that warns when the last 3 runs are more than 15 % below the earlier ones (filter, valve or pump wear).
+- **Overnight leak check** (average usage 02:00-05:00 against a limit, default 0.3 L/min) and a **daily budget**; both are set on the dashboard, kept in the browser, and shown as red banners. The history usage column is signed on purpose (sensor noise cancels when averaged).
+- **Monthly totals** (Monthly tab of the daily chart) and **CSV export** of history, daily totals and pump runs.
+- **`min_in`** (tenths of L/min; settings page: "Minimum pump intake"): stop the pump and latch `no_flow` when the intake measured from the level is below the limit after `flow_min` minutes (dry pump, closed valve, clogged filter). 0 keeps the old % rise check.
+- **Home Assistant** gets three more sensors: water usage rate, pump intake rate, water used today (discovery version 3; run `wtms discover` to re-publish).

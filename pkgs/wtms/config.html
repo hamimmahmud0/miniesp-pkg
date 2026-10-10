@@ -61,6 +61,7 @@
  <div class="row"><label>Rest between runs (minutes)</label><input name="rest" type="number" min="0"></div>
  <div class="row"><label>No-flow check after (minutes)</label><input name="flow_min" type="number" min="1"></div>
  <div class="row"><label>Minimum rise in that time (%)<small>less &rarr; "no_flow" fault</small></label><input name="rise_pct" type="number" step="0.1" min="0"></div>
+ <div class="row"><label>Minimum pump intake (L/min)<small>measured from the level; below it after the no-flow time &rarr; stop + "no_flow" (dry pump, closed valve, clogged filter). 0 = use the % rise above</small></label><input name="min_in_l" type="number" step="0.1" min="0" max="200"></div>
 </div>
 
 <div class="card"><h2><svg class="ic"><use href="#i-clock"/></svg>Timing &amp; filtering</h2>
@@ -109,7 +110,7 @@ function msg(t,c){$('msg').textContent=t;$('msg').className='msg '+(c||'')}
 function fill(){
   for(const el of F.elements){
     if(!el.name)continue; const n=el.name;
-    if(n==='full_cm')el.value=cfg.full_mm/10; else if(n==='empty_cm')el.value=cfg.empty_mm/10; else if(n==='lpcm_l')el.value=cfg.ml_cm/1000;
+    if(n==='full_cm')el.value=cfg.full_mm/10; else if(n==='empty_cm')el.value=cfg.empty_mm/10; else if(n==='lpcm_l')el.value=cfg.ml_cm/1000; else if(n==='min_in_l')el.value=(cfg.min_in||0)/10;
     else if(n==='rise_pct')el.value=cfg.rise_pm/10; else if(n in cfg)el.value=cfg[n];
   }
 }
@@ -121,6 +122,7 @@ function collect(){
     else if(n==='empty_cm'){k='empty_mm';val=Math.round(parseFloat(v)*10)}
     else if(n==='rise_pct'){k='rise_pm';val=Math.round(parseFloat(v)*10)}
     else if(n==='lpcm_l'){k='ml_cm';val=Math.round(parseFloat(v||'0')*1000)}
+    else if(n==='min_in_l'){k='min_in';val=Math.round(parseFloat(v||'0')*10)}
     if(typeof val==='number'&&isNaN(val)){throw new Error('check the number in "'+n+'"')}
     if(['name','pump','ha'].includes(n)&&!/^[A-Za-z0-9_.,:@\/-]*$/.test(String(val)))throw new Error('"'+n+'" may only contain letters, digits and _ . , : @ / -');
     a.push(k+'='+val);

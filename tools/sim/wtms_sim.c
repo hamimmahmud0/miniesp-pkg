@@ -12,7 +12,7 @@
 
 static unsigned now_s = 1760054400u;          // 2026-10-10 00:00:00 UTC
 static double vol = 600;                       // litres in the tank
-static int pump = 0, mq_state = 2;
+static int pump = 0, mq_state = 2, dry = 0; static unsigned dry_after;
 static char kvk[64][32], kvv[64][1024]; static int kvl[64], kvn;
 static double drawn_today, pumped_today; static int curdate;
 static double tot_use[40], tot_in[40];
@@ -56,8 +56,9 @@ int main(int argc, char **argv)
 {
     int days = argc > 1 ? atoi(argv[1]) : 8;
     srand(1); if (argc > 2) now_s = (unsigned)strtoul(argv[2], 0, 10);
-    char b0[]="wtms",b1[]="config",b2[]="full_mm=205",b3[]="ml_cm=8517",b4[]="vol_l=1000",b5[]="hist=60",b6[]="interval=5"; char *a[] = { b0,b1,b2,b3,b4,b5,b6 };
-    wtms_main(7, a);
+    if (argc > 3) { dry = 1; dry_after = now_s + (unsigned)atoi(argv[3]) * 86400; }
+    char b0[]="wtms",b1[]="config",b2[]="full_mm=205",b3[]="ml_cm=8517",b4[]="vol_l=1000",b5[]="hist=60",b6[]="interval=5",b7[]="min_in=100",b8[]="flow_min=2"; char *a[] = { b0,b1,b2,b3,b4,b5,b6,b7,b8 };
+    wtms_main(9, a);
     char r0[]="wtms",r1[]="run"; char *r[] = { r0, r1 };
     int rm_ok = system("rm -f www_tank/*.csv www_tank/state.json");
     double use_total = 0, in_total = 0; double dayuse[40]={0}, dayin[40]={0}; int di = 0; unsigned day0 = now_s/86400;
@@ -65,7 +66,7 @@ int main(int argc, char **argv)
         now_s += 5;
         double dtmin = 5/60.0;
         double u = use_rate_lpm(now_s) * dtmin; if (u > vol) u = vol;
-        double inn = pump ? 32.0*dtmin : 0;
+        double inn = pump ? (dry && now_s > dry_after ? 2.0 : 32.0)*dtmin : 0;
         vol += inn - u; if (vol > 1000) vol = 1000;
         dayuse[(now_s/86400)-day0] += u; dayin[(now_s/86400)-day0] += inn;
         wtms_main(2, r);                     // the service ticks every 5 s; the program gates itself to every 15 s
