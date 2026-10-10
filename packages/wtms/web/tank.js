@@ -8,10 +8,10 @@ const T={
   async raw(args,tries=6){
     for(let i=0;i<tries;i++){
       try{const r=await fetch('/cgi-bin/wtms?'+args.join('+'),{cache:'no-store'});
-        if(r.status!==503){const t=await r.text();try{return JSON.parse(t)}catch(e){return{ok:false,error:'bad reply'}}}}catch(e){}
+        if(r.status!==503&&r.status!==500){const t=await r.text();try{return JSON.parse(t)}catch(e){return{ok:false,error:'bad reply'}}}}catch(e){}
       await new Promise(r=>setTimeout(r,1500));
     }
-    throw new Error('Board busy or unreachable');
+    throw new Error('The board is busy or low on memory: wait a few seconds and try again');
   },
   async call(sub,...args){                       // authenticated call; a rejected token sends you to the login page
     const r=await T.raw(['web',sub,T.tok(),...args]);
