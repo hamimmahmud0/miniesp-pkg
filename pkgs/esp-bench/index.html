@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Benchmark - miniesp</title><link rel="stylesheet" href="/style.css"><script src="/ui.js"></script>
+<script>window.UI_APP={id:'esp-bench',label:'Benchmark',href:'/bench/',icon:'gauge',pages:[{id:'bench',label:'Results',href:'/bench/'}]}</script>
+<style>.bar{display:grid;grid-template-columns:90px minmax(0,1fr) 90px;gap:12px;align-items:center;margin:8px 0;font-size:var(--fs-sm)}.bar .track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden}.bar i{display:block;height:100%;background:var(--c1)}.bar i.b{background:var(--c2)}.bar b{text-align:right}.big{font-size:44px;font-weight:600;line-height:1.1}.num{text-align:right;font-variant-numeric:tabular-nums}</style>
+</head>
+<body data-nav="bench">
+<div class="app"><main class="main"><div class="page">
+ <div class="ph"><div><h1>Benchmark</h1><p>Latest <code>esp-bench --save</code> result from this board. Run it over SSH; this page only shows the saved numbers.</p></div></div>
+ <div id="empty" class="card" hidden><p>No result yet. Log in over SSH and run <code>esp-bench --save</code>.</p></div>
+ <div id="res" class="stack" hidden>
+  <div class="stats" id="stats"></div>
+  <div class="grid-2">
+   <div class="card"><h2>AOT code (your programs)</h2><p class="muted small">Points per kernel, 1000 = reference ESP32 at 240 MHz.</p><div id="aot"></div></div>
+   <div class="card"><h2>Both cores, native (dual-core builds only)</h2><p class="muted small">Iterations per second relative to one core (200 % = perfect scaling).</p><div id="nat"></div></div>
+  </div>
+  <div class="card"><h2>Per kernel</h2><div class="table-wrap"><table class="table rwd" id="tbl"><thead><tr><th>Kernel</th><th class="num">AOT iter/s</th><th class="num">Core 0</th><th class="num">Core 1</th><th class="num">Both</th><th class="num">AOT / native</th></tr></thead><tbody></tbody></table></div></div>
+  <div class="grid-2">
+   <div class="card"><h2>Core 1 load vs. this core</h2><div class="table-wrap"><table class="table" id="load"><thead><tr><th>Kernel</th><th class="num">Alone</th><th class="num">With load</th><th class="num">Slowdown</th></tr></thead><tbody></tbody></table></div></div>
+   <div class="card"><h2>OS services</h2><dl class="kv" id="sys"></dl></div>
+  </div>
+  <div class="card"><h2>History</h2><div class="table-wrap"><table class="table" id="hist"><thead><tr><th>Time</th><th class="num">Score</th><th class="num">ms / test</th><th class="num">Cores</th></tr></thead><tbody></tbody></table></div></div>
+ </div>
+</div></main></div>
+<script>
+const $=i=>document.getElementById(i),f=n=>n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e4?(n/1e3).toFixed(1)+'k':String(n);
+function bars(el,rows,cls){el.innerHTML=rows.map(r=>`<div class="bar"><span>${UI.esc(r[0])}</span><div class="track"><i class="${cls||''}" style="width:${Math.min(100,r[1]/r[3]*100)}%"></i></div><b>${r[2]}</b></div>`).join('')}
+(async()=>{
+ let d; try{const r=await fetch('last.json',{cache:'no-store'}); if(!r.ok)throw 0; d=await r.json()}catch(e){$('empty').hidden=false;return}
+ $('res').hidden=false;
+ const K=d.kinds,s=d.sys||{},st=(l,v,n)=>`<div class="stat"><span>${l}</span><b>${v}</b><small>${n||''}</small></div>`;
+ const when=d.ts?new Date(d.ts*1000).toLocaleString():'time unknown';
+ $('stats').innerHTML=st('Score',d.score,'1000 = reference ESP32')+st('CPU',d.mhz+' MHz',d.cores+' core(s)')+st('Ran on','core '+d.core,d.version)+st('Measured',when,d.mode_ms+' ms per test');
+ const pts=K.map((k,i)=>Math.round(d.aot[i]*1000/d.ref[i]));
+ bars($('aot'),K.map((k,i)=>[k,pts[i],pts[i],Math.max(...pts,1000)]));
+ const sc=K.map((k,i)=>d.core0[i]?Math.round(d.both[i]*100/d.core0[i]):0);
+ bars($('nat'),K.map((k,i)=>[k,sc[i],sc[i]?sc[i]+' %':'-',200]),'b');
+ $('tbl').tBodies[0].innerHTML=K.map((k,i)=>`<tr><td data-label="Kernel">${k}</td><td class="num" data-label="AOT iter/s">${f(d.aot[i])}</td><td class="num" data-label="Core 0">${f(d.core0[i])}</td><td class="num" data-label="Core 1">${f(d.core1[i])}</td><td class="num" data-label="Both">${f(d.both[i])}</td><td class="num" data-label="AOT / native">${d.core0[i]?Math.round(d.aot[i]*100/d.core0[i])+' %':'-'}</td></tr>`).join('');
+ const LK=['int','memcpy','chase'];
+ $('load').tBodies[0].innerHTML=LK.map((k,i)=>`<tr><td>${k}</td><td class="num">${f(d.load_alone[i])}</td><td class="num">${f(d.load_busy[i])}</td><td class="num">${d.load_alone[i]?100-Math.round(d.load_busy[i]*100/d.load_alone[i]):0} %</td></tr>`).join('');
+ $('sys').innerHTML=[['Syscall',s.syscall_ns+' ns'],['stat()',s.stat_us+' us'],['NVS read',s.kv_us+' us'],['File write',s.fs_write_kbs+' KB/s'],['File read',s.fs_read_kbs+' KB/s'],['In-RAM pipe',s.pipe_kbs+' KB/s'],['TCP loopback',s.tcp_kbs+' KB/s']].map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('');
+ try{const t=await (await fetch('history.csv',{cache:'no-store'})).text();
+  $('hist').tBodies[0].innerHTML=t.trim().split('\n').slice(-12).reverse().map(l=>l.split(',')).map(c=>`<tr><td>${c[0]>0?new Date(c[0]*1000).toLocaleString():'-'}</td><td class="num">${c[1]}</td><td class="num">${c[2]}</td><td class="num">${c[3]}</td></tr>`).join('')}catch(e){}
+})();
+</script></body></html>
