@@ -52,6 +52,10 @@
       const mute = css('--mute'), line = css('--line'), fg = css('--fg'), small = W < 480;
       g.font = (small ? 11 : 12) + 'px system-ui,sans-serif';
       const S = this.vis(), cat = o.xmode === 'cat';
+      if (!S.length) {                                           // nothing to plot: just the message (no misleading 0..1 axis)
+        g.strokeStyle = line; g.beginPath(); g.moveTo(10, H - 24.5); g.lineTo(W - 10, H - 24.5); g.stroke();
+        g.fillStyle = mute; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(o.empty || 'No data yet', W / 2, H / 2); this.tipHide(); return
+      }
       // ---- scales ----
       const ax = {};
       for (const side of ['left', 'right']) {
