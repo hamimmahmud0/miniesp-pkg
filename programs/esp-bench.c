@@ -161,7 +161,7 @@ static void make_json(void)
 {
     char ver[64] = "", ip[24] = "";
     sys_version(ver, sizeof ver); sys_netinfo(1, ip, sizeof ip);
-    ja("{\"ts\":%u,\"version\":\"%s\",\"mhz\":%d,\"cores\":%d,\"core\":%d,\"mode_ms\":%d,\"score\":%d,\"dram_free\":%d,\"kinds\":[", sys_time(), ver, sys_sysinfo(SI_CPU_MHZ), ncores, mycore, ms, score(), sys_sysinfo(SI_DRAM_FREE));
+    ja("{\"ts\":%u,\"version\":\"%s\",\"mhz\":%d,\"cores\":%d,\"core\":%d,\"mode_ms\":%d,\"score\":%d,\"dram_free\":%d,\"psram\":%d,\"kinds\":[", sys_time(), ver, sys_sysinfo(SI_CPU_MHZ), ncores, mycore, ms, score(), sys_sysinfo(SI_DRAM_FREE), sys_sysinfo(SI_PSRAM_TOTAL));
     for (int k = 0; k < BK_KINDS; k++) ja("%s\"%s\"", k ? "," : "", NAMES[k]);
     ja("],\"units\":["); for (int k = 0; k < BK_KINDS; k++) ja("%s%d", k ? "," : "", UNITS[k]);
     ja("],\"ref\":["); for (int k = 0; k < BK_KINDS; k++) ja("%s%d", k ? "," : "", REF[k]);
@@ -193,7 +193,7 @@ int main(int argc, char **argv)
     if (!json) {
         char ver[64] = "";
         sys_version(ver, sizeof ver);
-        m_printf("esp-bench  %s\nCPU %d MHz, %d core(s), program runs on core %d, DRAM free %d KB, %d ms per test\n", ver, sys_sysinfo(SI_CPU_MHZ), ncores, mycore, sys_sysinfo(SI_DRAM_FREE) / 1024, ms);
+        m_printf("esp-bench  %s\nCPU %d MHz, %d core(s), program runs on core %d, DRAM free %d KB, PSRAM %d KB, %d ms per test\n", ver, sys_sysinfo(SI_CPU_MHZ), ncores, mycore, sys_sysinfo(SI_DRAM_FREE) / 1024, sys_sysinfo(SI_PSRAM_TOTAL) / 1024, ms);
         m_puts("Stop other programs first: services (e.g. wtms) skip their runs while this one holds the runtime.\n");
     }
     if (t_cpu || t_nat || t_load) { for (int k = 0; k < BK_KINDS; k++) aot[k] = 0; }
