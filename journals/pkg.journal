@@ -3,4 +3,4 @@
 pkg nmap 1.0 https://raw.githubusercontent.com/hamimmahmud0/miniesp-pkg/main/pkgs/nmap.aot sha256=8c9701ff5c9f08fd24d77b86cb36aa838f5cb5cb3831c1277c5c1f4d47d31cf2 size=14472 abi=3
 pkg curl 1.0 https://raw.githubusercontent.com/hamimmahmud0/miniesp-pkg/main/pkgs/curl.aot sha256=f13905bb46cac8bd17212263814ea16d3d2ff8a6edff91b7ff8ed15b01eb7e8b size=6172 abi=4
 pkg neofetch 1.0 https://raw.githubusercontent.com/hamimmahmud0/miniesp-pkg/main/pkgs/neofetch.aot sha256=d8ec0ba451b4092517a123622084e309a8e4dd01b63c3bbb46e76ebdbb766818 size=12136 abi=4
-bundle wtms 1.2.3 https://raw.githubusercontent.com/hamimmahmud0/miniesp-pkg/main/pkgs/wtms/MANIFEST sha256=68f1adaa1b16875ff0c34fe8e338ecbce6a41fb60e7e70a22d963ac5f2c62534 size=1939 abi=4
+bundle wtms 1.3 https://raw.githubusercontent.com/hamimmahmud0/miniesp-pkg/main/pkgs/wtms/MANIFEST sha256=9c7de2e7e50135d06c68923be69a030d05f27021867eb050fe27f5a6cc7f0639 size=1936 abi=4

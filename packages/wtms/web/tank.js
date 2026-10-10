@@ -1,4 +1,5 @@
-// Shared helpers for the tank pages: login token, CGI calls, force-control widget.
+// Shared helpers for the tank pages: login token, CGI calls, force-control widget. Styling: /style.css + tank.css.
+window.UI_APP={id:'wtms',label:'Water tank',href:'/tank/',icon:'droplet',pages:[{id:'tank',label:'Dashboard',href:'/tank/'},{id:'tank-settings',label:'Settings',href:'/tank/config.html'}]};
 const $=i=>document.getElementById(i);
 const T={
   tok:()=>{try{return localStorage.getItem('tank_tok')||''}catch(e){return''}},
@@ -22,12 +23,12 @@ const T={
   fmtLeft:s=>s>=3600?Math.floor(s/3600)+' h '+Math.floor(s%3600/60)+' min':s>=60?Math.floor(s/60)+' min':s+' s',
   // Force-control widget (needs a logged-in user). Renders into element `el`.
   mountControls(el,onChange){
-    el.innerHTML=`<div class="banner" id="fb">Automatic</div>
-     <div class="row"><label for="fdur">Force ON for</label><select id="fdur"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="360">6 hours</option></select></div>
-     <div class="btns"><button class="b ok" id="fon">Force pump ON</button><button class="b bad" id="foff">Force pump OFF</button>
-       <button class="b sec" id="frel">Release &rarr; auto</button><button class="b sec" id="fclr">Clear fault</button><button class="b sec" id="fauto">Auto: --</button></div>
+    el.innerHTML=`<div class="fbanner" id="fb">Automatic</div>
+     <div class="field"><label for="fdur">Force ON for</label><select id="fdur"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="360">6 hours</option></select></div>
+     <div class="ctl-grid"><button class="btn btn-ok" id="fon">Force pump ON</button><button class="btn btn-bad" id="foff">Force pump OFF</button>
+       <button class="btn" id="frel">Release &rarr; auto</button><button class="btn" id="fclr">Clear fault</button><button class="btn" id="fauto">Auto: --</button></div>
      <div class="msg" id="fmsg"></div>
-     <div class="sub"><b>Force ON</b> runs the pump regardless of level, auto mode and faults until the time is up (an overflow guard still stops it at 100%). <b>Force OFF</b> keeps it off until you release it. The pump relay's auto-off timer remains the last line of defence.</div>`;
+     <p class="muted small"><b>Force ON</b> runs the pump regardless of level, auto mode and faults until the time is up (an overflow guard still stops it at 100%). <b>Force OFF</b> keeps it off until you release it. The pump relay's auto-off timer remains the last line of defence.</p>`;
     const msg=(t,c)=>{$('fmsg').textContent=t;$('fmsg').className='msg '+(c||'')};
     const run=async(cmd,ok)=>{ for(const b of el.querySelectorAll('button'))b.disabled=true; msg('Sending…');
       try{const s=await T.call('act',cmd); if(s.ts!==undefined){msg(ok,'g');T.showForce(s);onChange&&onChange(s)}else if(s.error!=='auth')msg('Failed','e')}catch(e){msg(e.message,'e')}
@@ -42,9 +43,9 @@ const T={
   },
   showForce(s){
     const b=$('fb'); if(!b)return;
-    if(s.force==='on'){b.className='banner on';b.textContent='FORCED ON'+(s.force_left?' — '+T.fmtLeft(s.force_left)+' left':'')}
-    else if(s.force==='off'){b.className='banner off';b.textContent='FORCED OFF — until released'+(s.force_left?' ('+T.fmtLeft(s.force_left)+' left)':'')}
-    else{b.className='banner';b.textContent=s.auto==='ON'?'Automatic: pump follows the level':'Automatic fill is OFF'}
+    if(s.force==='on'){b.className='fbanner on';b.textContent='FORCED ON'+(s.force_left?' — '+T.fmtLeft(s.force_left)+' left':'')}
+    else if(s.force==='off'){b.className='fbanner off';b.textContent='FORCED OFF — until released'+(s.force_left?' ('+T.fmtLeft(s.force_left)+' left)':'')}
+    else{b.className='fbanner';b.textContent=s.auto==='ON'?'Automatic: pump follows the level':'Automatic fill is OFF'}
     const a=$('fauto'); if(a){a.dataset.auto=s.auto;a.textContent='Auto fill: '+s.auto}
   }
 };

@@ -1,107 +1,84 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Settings - Water tank - miniesp</title><link rel="stylesheet" href="tank.css"><style>.calc{display:none;border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}</style></head><body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<symbol id="i-droplet" viewBox="0 0 24 24"><path d="M12 3c3.5 4.2 6 7 6 10.2A6 6 0 0 1 6 13.2C6 10 8.5 7.2 12 3z"/></symbol>
-<symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
-<symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
-<symbol id="i-package" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
-<symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.3 7a8 8 0 1 0 11.4 0"/></symbol>
-<symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
-<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
-<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9s1.3-6.4 3.9-9z"/></symbol>
-<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.8 12.5a9.5 9.5 0 0 1 12.4 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r=".9"/></symbol>
-<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
-<symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5V3z"/><path d="M8 3v5h7V3M8 21v-6h8v6"/></symbol>
-</defs></svg>
-<header class="top"><div class="bar">
- <a class="brand" href="/" aria-label="miniesp">
-  <svg class="logo" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><g class="pins"><rect x="21" y="3" width="4" height="9" rx="2"/><rect x="30" y="3" width="4" height="9" rx="2"/><rect x="39" y="3" width="4" height="9" rx="2"/><rect x="21" y="52" width="4" height="9" rx="2"/><rect x="30" y="52" width="4" height="9" rx="2"/><rect x="39" y="52" width="4" height="9" rx="2"/><rect x="3" y="21" width="9" height="4" rx="2"/><rect x="3" y="30" width="9" height="4" rx="2"/><rect x="3" y="39" width="9" height="4" rx="2"/><rect x="52" y="21" width="9" height="4" rx="2"/><rect x="52" y="30" width="9" height="4" rx="2"/><rect x="52" y="39" width="9" height="4" rx="2"/></g><rect class="body" x="12" y="12" width="40" height="40" rx="7"/><path class="chev" d="M22 23l11 9-11 9" fill="none" stroke-width="4.5"/><rect x="35" y="39" width="11" height="4.5" fill="#f97316"/></svg>
-  <span>mini<b>esp</b></span></a>
- <nav class="mtabs" aria-label="Console">
-  <a href="/#machine"><svg class="ic"><use href="#i-server"/></svg>Machine</a>
-  <a href="/#services"><svg class="ic"><use href="#i-activity"/></svg>Services</a>
-  <a href="/#apps" aria-current="page"><svg class="ic"><use href="#i-package"/></svg>Apps</a>
- </nav>
-</div></header>
-<main class="wrap">
-<div class="head"><div class="tile"><svg class="ic" style="width:24px;height:24px"><use href="#i-sliders"/></svg></div>
- <div><h1>Settings</h1><div class="sub">Water tank manager</div></div>
- <nav class="menu"><a href="index.html">Dashboard</a><a class="cur" href="config.html">Settings</a><button onclick="T.logout()">Log out</button></nav></div>
-<div class="cards">
+<title>Settings - Water tank - miniesp</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="tank.css"><style>.calc{display:none}</style><script src="/ui.js"></script></head>
+<body data-nav="tank-settings">
+<div class="app"><main class="main"><div class="page narrow">
+<div class="ph"><div><h1>Settings</h1><p>Tank size, pump thresholds, sensor wiring and the MQTT broker of the water tank manager. <a href="https://github.com/hamimmahmud0/miniesp-pkg/tree/main/packages/wtms" target="_blank" rel="noopener">See all settings</a></p></div>
+ <div class="actions"><a class="btn" href="index.html">Dashboard</a><button class="btn" type="button" onclick="T.logout()"><svg class="ic"><use href="#i-logout"/></svg>Log out</button></div></div>
+<div class="stack">
 <div class="card"><h2><svg class="ic"><use href="#i-power"/></svg>Force control</h2><div id="ctlbox"></div></div>
 <form id="f" onsubmit="return save(event)" style="display:contents">
 <div class="card"><h2><svg class="ic"><use href="#i-droplet"/></svg>Tank</h2>
- <div class="row"><label>Total storage (litres)<small>water volume at 100 %</small></label><input name="vol_l" type="number" min="1" max="200000" oninput="derive()"></div>
- <div class="row"><label>Litres per cm of water height<small>1000 L PVC tank: 8.517</small></label><input name="lpcm_l" type="number" step="0.001" min="0" oninput="derive()"></div>
- <div class="row"><label>Sensor to water at 100 % (cm)<small>the gap above a full tank, at least 2.5</small></label><input name="full_cm" type="number" step="0.1" min="2.5" oninput="derive()"></div>
- <div class="row"><label>Sensor to water when EMPTY (cm)<small id="emp_note">calculated from the settings above</small></label><input name="empty_cm" type="number" step="0.1" id="empty_cm"></div>
- <div class="sub" id="dv" style="margin:6px 18px 0"></div>
- <div class="btns"><button type="button" class="b sec" onclick="preset()">1000 L PVC tank preset</button>
-  <button type="button" class="b sec" onclick="document.getElementById('calc').style.display='block'">Calculate from dimensions&hellip;</button></div>
+ <div class="field"><label>Total storage (litres)<small>water volume at 100 %</small></label><input name="vol_l" type="number" min="1" max="200000" oninput="derive()"></div>
+ <div class="field"><label>Litres per cm of water height<small>1000 L PVC tank: 8.517</small></label><input name="lpcm_l" type="number" step="0.001" min="0" oninput="derive()"></div>
+ <div class="field"><label>Sensor to water at 100 % (cm)<small>the gap above a full tank, at least 2.5</small></label><input name="full_cm" type="number" step="0.1" min="2.5" oninput="derive()"></div>
+ <div class="field"><label>Sensor to water when EMPTY (cm)<small id="emp_note">calculated from the settings above</small></label><input name="empty_cm" type="number" step="0.1" id="empty_cm"></div>
+ <p class="muted small" id="dv" style="margin-top:10px"></p>
+ <div class="btns"><button type="button" class="btn" onclick="preset()">1000 L PVC tank preset</button>
+  <button type="button" class="btn" onclick="document.getElementById('calc').style.display='block'">Calculate from dimensions&hellip;</button></div>
  <div class="calc" id="calc">
-  <div class="row"><label>Shape</label><select id="shape" onchange="shapeUI()"><option value="r">Rectangular</option><option value="c">Cylinder</option></select></div>
-  <div class="row" id="rl"><label>Length (cm)</label><input id="cl" type="number" min="1"></div>
-  <div class="row" id="rw"><label>Width (cm)</label><input id="cw" type="number" min="1"></div>
-  <div class="row" id="rd" style="display:none"><label>Diameter (cm)</label><input id="cd" type="number" min="1"></div>
-  <div class="row"><label>Water height when full (cm)</label><input id="ch" type="number" min="1"></div>
-  <button type="button" class="b sec" onclick="calc()">Use these dimensions</button>
+  <div class="field"><label>Shape</label><select id="shape" onchange="shapeUI()"><option value="r">Rectangular</option><option value="c">Cylinder</option></select></div>
+  <div class="field" id="rl"><label>Length (cm)</label><input id="cl" type="number" min="1"></div>
+  <div class="field" id="rw"><label>Width (cm)</label><input id="cw" type="number" min="1"></div>
+  <div class="field" id="rd" style="display:none"><label>Diameter (cm)</label><input id="cd" type="number" min="1"></div>
+  <div class="field"><label>Water height when full (cm)</label><input id="ch" type="number" min="1"></div>
+  <button type="button" class="btn" onclick="calc()">Use these dimensions</button>
  </div>
- <div class="btns"><button type="button" class="b sec" onclick="readSensor()">Read sensor now</button>
-  <button type="button" class="b sec" onclick="useReading('full_cm')">Use reading as FULL</button>
-  <button type="button" class="b sec" onclick="useReading('empty_cm')">Use reading as EMPTY</button></div>
- <div class="msg sub" id="rd_msg"></div>
+ <div class="btns"><button type="button" class="btn" onclick="readSensor()">Read sensor now</button>
+  <button type="button" class="btn" onclick="useReading('full_cm')">Use reading as FULL</button>
+  <button type="button" class="btn" onclick="useReading('empty_cm')">Use reading as EMPTY</button></div>
+ <div class="msg" id="rd_msg"></div>
 </div>
 
 <div class="card"><h2><svg class="ic"><use href="#i-sliders"/></svg>Thresholds &amp; safety</h2>
- <div class="row"><label>Start pump at or below (%)</label><input name="on_pct" type="number" min="0" max="99"></div>
- <div class="row"><label>Stop pump at or above (%)</label><input name="off_pct" type="number" min="1" max="100"></div>
- <div class="row"><label>Longest run (minutes)<small>then stop and flag a fault</small></label><input name="max_run" type="number" min="1"></div>
- <div class="row"><label>Rest between runs (minutes)</label><input name="rest" type="number" min="0"></div>
- <div class="row"><label>No-flow check after (minutes)</label><input name="flow_min" type="number" min="1"></div>
- <div class="row"><label>Minimum rise in that time (%)<small>less &rarr; "no_flow" fault</small></label><input name="rise_pct" type="number" step="0.1" min="0"></div>
- <div class="row"><label>Minimum pump intake (L/min)<small>measured from the level; below it after the no-flow time &rarr; stop + "no_flow" (dry pump, closed valve, clogged filter). 0 = use the % rise above</small></label><input name="min_in_l" type="number" step="0.1" min="0" max="200"></div>
+ <div class="field"><label>Start pump at or below (%)</label><input name="on_pct" type="number" min="0" max="99"></div>
+ <div class="field"><label>Stop pump at or above (%)</label><input name="off_pct" type="number" min="1" max="100"></div>
+ <div class="field"><label>Longest run (minutes)<small>then stop and flag a fault</small></label><input name="max_run" type="number" min="1"></div>
+ <div class="field"><label>Rest between runs (minutes)</label><input name="rest" type="number" min="0"></div>
+ <div class="field"><label>No-flow check after (minutes)</label><input name="flow_min" type="number" min="1"></div>
+ <div class="field"><label>Minimum rise in that time (%)<small>less &rarr; "no_flow" fault</small></label><input name="rise_pct" type="number" step="0.1" min="0"></div>
+ <div class="field"><label>Minimum pump intake (L/min)<small>measured from the level; below it after the no-flow time &rarr; stop + "no_flow" (dry pump, closed valve, clogged filter). 0 = use the % rise above</small></label><input name="min_in_l" type="number" step="0.1" min="0" max="200"></div>
 </div>
 
 <div class="card"><h2><svg class="ic"><use href="#i-clock"/></svg>Timing &amp; filtering</h2>
- <div class="row"><label>Read the level every (seconds)<small>5&ndash;3600; at most 15 s while the pump runs</small></label><input name="interval" type="number" min="5" max="3600"></div>
- <div class="row"><label>Echo samples per reading<small>3&ndash;15, median is used</small></label><input name="samples" type="number" min="3" max="15"></div>
- <div class="row"><label>Ignore jumps larger than (%)<small>splashes / stray echoes; 5&ndash;100</small></label><input name="jump_pct" type="number" min="5" max="100"></div>
- <div class="row"><label>Good readings before first start<small>1&ndash;20 in a row</small></label><input name="good_n" type="number" min="1" max="20"></div>
- <div class="row"><label>Assumed air temperature (&deg;C)<small>used without a DS18B20</small></label><input name="temp_c" type="number" min="-30" max="60"></div>
- <div class="row"><label>History sample every (seconds)</label><input name="hist" type="number" min="10"></div>
- <div class="row"><label>History file size (KB)<small>old data rotates out; 4&ndash;64</small></label><input name="hist_kb" type="number" min="4" max="64"></div>
+ <div class="field"><label>Read the level every (seconds)<small>5&ndash;3600; at most 15 s while the pump runs</small></label><input name="interval" type="number" min="5" max="3600"></div>
+ <div class="field"><label>Echo samples per reading<small>3&ndash;15, median is used</small></label><input name="samples" type="number" min="3" max="15"></div>
+ <div class="field"><label>Ignore jumps larger than (%)<small>splashes / stray echoes; 5&ndash;100</small></label><input name="jump_pct" type="number" min="5" max="100"></div>
+ <div class="field"><label>Good readings before first start<small>1&ndash;20 in a row</small></label><input name="good_n" type="number" min="1" max="20"></div>
+ <div class="field"><label>Assumed air temperature (&deg;C)<small>used without a DS18B20</small></label><input name="temp_c" type="number" min="-30" max="60"></div>
+ <div class="field"><label>History sample every (seconds)</label><input name="hist" type="number" min="10"></div>
+ <div class="field"><label>History file size (KB)<small>old data rotates out; 4&ndash;64</small></label><input name="hist_kb" type="number" min="4" max="64"></div>
 </div>
 <div class="card"><h2><svg class="ic"><use href="#i-cpu"/></svg>Sensor wiring</h2>
- <div class="row"><label>TRIG GPIO</label><input name="trig" type="number"></div>
- <div class="row"><label>ECHO GPIO<small>through a 5V&rarr;3.3V divider</small></label><input name="echo" type="number"></div>
- <div class="row"><label>DS18B20 GPIO<small>0 = none (temperature compensation)</small></label><input name="temp" type="number"></div>
+ <div class="field"><label>TRIG GPIO</label><input name="trig" type="number"></div>
+ <div class="field"><label>ECHO GPIO<small>through a 5V&rarr;3.3V divider</small></label><input name="echo" type="number"></div>
+ <div class="field"><label>DS18B20 GPIO<small>0 = none (temperature compensation)</small></label><input name="temp" type="number"></div>
 </div>
 
 <div class="card"><h2><svg class="ic"><use href="#i-globe"/></svg>Integration</h2>
- <div class="row"><label>Tank name / MQTT prefix</label><input name="name"></div>
- <div class="row"><label>Pump relay topic prefix</label><input name="pump"></div>
- <div class="row"><label>Home Assistant discovery prefix<small>empty = off</small></label><input name="ha"></div>
+ <div class="field"><label>Tank name / MQTT prefix</label><input name="name"></div>
+ <div class="field"><label>Pump relay topic prefix</label><input name="pump"></div>
+ <div class="field"><label>Home Assistant discovery prefix<small>empty = off</small></label><input name="ha"></div>
 </div>
-<div class="card"><h2><svg class="ic"><use href="#i-save"/></svg>Save</h2><div class="btns"><button class="b" type="submit" id="savebtn">Save settings</button><button class="b sec" type="button" onclick="load()">Reload values</button></div><div class="msg" id="msg"></div></div>
+<div class="card"><h2><svg class="ic"><use href="#i-save"/></svg>Save</h2><div class="btns"><button class="btn btn-primary" type="submit" id="savebtn">Save settings</button><button class="btn" type="button" onclick="load()">Reload values</button></div><div class="msg" id="msg"></div></div>
 </form>
 <div class="card"><h2><svg class="ic"><use href="#i-wifi"/></svg>MQTT broker</h2>
- <div class="sub" id="mqs">--</div>
- <div class="row"><label>Broker host / IP</label><input id="mh" maxlength="40"></div>
- <div class="row"><label>Port</label><input id="mp" type="number" min="1" max="65535"></div>
- <div class="row"><label>User<small>max 16 characters; empty = none</small></label><input id="mu" maxlength="16" autocomplete="off"></div>
- <div class="row"><label>Password<small>required to apply; max 24 characters</small></label><input id="mw" type="password" maxlength="24" autocomplete="new-password"></div>
- <div class="btns"><button class="b" type="button" onclick="saveMqtt()">Apply broker settings</button></div>
+ <p class="muted small" id="mqs">--</p>
+ <div class="field"><label>Broker host / IP</label><input id="mh" maxlength="40"></div>
+ <div class="field"><label>Port</label><input id="mp" type="number" min="1" max="65535"></div>
+ <div class="field"><label>User<small>max 16 characters; empty = none</small></label><input id="mu" maxlength="16" autocomplete="off"></div>
+ <div class="field"><label>Password<small>required to apply; max 24 characters</small></label><input id="mw" type="password" maxlength="24" autocomplete="new-password"></div>
+ <div class="btns"><button class="btn btn-primary" type="button" onclick="saveMqtt()">Apply broker settings</button></div>
  <div class="msg" id="mmsg"></div>
- <div class="sub">Applying reconnects the controller to the broker (client ID becomes the board's hostname). Stored on the board; the password is never shown again.</div>
+ <p class="muted small" style="margin-top:8px">Applying reconnects the controller to the broker (client ID becomes the board's hostname). Stored on the board; the password is never shown again.</p>
 </div>
 <div class="card"><h2><svg class="ic"><use href="#i-user"/></svg>Account</h2>
- <div class="row"><label for="op">Current password</label><input id="op" type="password" autocomplete="current-password"></div>
- <div class="row"><label for="np">New password<small>6+ characters; logs out other sessions</small></label><input id="np" type="password" autocomplete="new-password"></div>
- <div class="btns"><button class="b sec" type="button" onclick="chpw()">Change password</button></div><div class="msg" id="pmsg"></div></div>
+ <div class="field"><label for="op">Current password</label><input id="op" type="password" autocomplete="current-password"></div>
+ <div class="field"><label for="np">New password<small>6+ characters; logs out other sessions</small></label><input id="np" type="password" autocomplete="new-password"></div>
+ <div class="btns"><button class="btn" type="button" onclick="chpw()">Change password</button></div><div class="msg" id="pmsg"></div></div>
 </div>
-<p class="sub">MQTT broker address/credentials: <code>ssh esp@esp-minix.local "mqtt config HOST PORT USER PASS"</code>. Plain HTTP: use only on a trusted network.</p>
+<p class="muted small" style="margin-top:var(--gap)">MQTT broker address/credentials: <code>ssh esp@esp-minix.local "mqtt config HOST PORT USER PASS"</code>. Plain HTTP: use only on a trusted network.</p>
+</div></main></div>
 <script src="tank.js"></script>
 <script>
 const F=$('f');
@@ -183,4 +160,4 @@ async function chpw(){
 async function live(){ try{T.showForce(await (await fetch('state.json?'+Date.now())).json())}catch(e){} }
 (async()=>{ if(!(await T.loggedIn())){location.href='login.html?next=config.html';return}
   T.mountControls($('ctlbox')); live(); setInterval(live,10000); load(); loadMqtt(); })();
-</script></main></body></html>
+</script></body></html>
