@@ -63,7 +63,7 @@ const f1=v=>(Math.round(v*10)/10).toString(), f2=v=>v>=10?Math.round(v).toString
 const fl=v=>f1(v)+' L', fr=v=>(Math.round(v*100)/100).toFixed(2)+' L/min';
 const hm=t=>new Date(t*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 const dm=t=>new Date(t*1000).toLocaleDateString([],{month:'short',day:'numeric'});
-const dur=s=>s>=3600?Math.floor(s/3600)+' h '+Math.round(s%3600/60)+' min':Math.round(s/60)+' min';
+const dur=s=>{s=Math.round(s/60)*60;return s>=3600?Math.floor(s/3600)+' h '+Math.floor(s%3600/60)+' min':Math.round(s/60)+' min'};
 const ymd=n=>{const y=Math.floor(n/10000),m=Math.floor(n/100)%100,d=n%100;return {y,m,d,date:new Date(y,m-1,d)}};
 function render(s){
   last=s; const vol=s.vol||1000;

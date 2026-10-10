@@ -1,7 +1,7 @@
 # wtms bundle (read by tools/mkbundle.py): builds the program, hashes every file, writes pkgs/wtms/ and the journal entry.
 name wtms
 # needs the miniesp web design system (/style.css, /ui.js; miniesp docs/UI_GUIDE.md)
-version 1.3
+version 1.3.1
 abi 4
 # program SOURCE.c -> DEST on the board (built with programs/build.sh)
 program ../../programs/wtms.c -> /esp/.local/bin/wtms.aot
