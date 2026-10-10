@@ -128,3 +128,11 @@ body:has(.wrap.wide) .bar{max-width:1240px}
 .chk{display:flex;gap:10px;align-items:flex-start}.chk .dot{margin-top:7px}.chk b{font-weight:600}
 .exp{margin-top:12px}
 .card .row input[type=number]{max-width:120px;justify-self:end}
+/* desktop: the right column (tiles + level chart) is as tall as the left one, so the chart card fills the space instead of leaving a hole above the next row */
+@media(min-width:1000px){
+ .cols>.stack:last-child{grid-template-rows:auto 1fr}
+ .cols>.stack:last-child>.card{display:flex;flex-direction:column}
+ .cols>.stack:last-child>.card>.chartbox{position:relative;flex:1;min-height:240px;margin-bottom:0}
+ .cols>.stack:last-child>.card>.chartbox canvas{position:absolute;inset:0;width:100%;height:100%}
+ .cols>.stack:last-child>.card>.sub{margin-top:8px}
+}

@@ -1,6 +1,6 @@
 # wtms bundle (read by tools/mkbundle.py): builds the program, hashes every file, writes pkgs/wtms/ and the journal entry.
 name wtms
-version 1.2.2
+version 1.2.3
 abi 4
 # program SOURCE.c -> DEST on the board (built with programs/build.sh)
 program ../../programs/wtms.c -> /esp/.local/bin/wtms.aot
