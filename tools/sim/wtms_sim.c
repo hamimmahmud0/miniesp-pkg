@@ -38,7 +38,8 @@ unsigned sys_millis(void){ return (unsigned)(now_s*1000u); }
 int sys_localtime(unsigned e, int *o, int b){ time_t t=e; struct tm tm; gmtime_r(&t,&tm); o[0]=tm.tm_sec;o[1]=tm.tm_min;o[2]=tm.tm_hour;o[3]=tm.tm_mday;o[4]=tm.tm_mon;o[5]=tm.tm_year+1900;o[6]=tm.tm_wday;o[7]=tm.tm_yday; return 0; }
 void sys_sleep_ms(unsigned ms){}
 int sys_ds18b20(int p){ return -9999; }
-int sys_sonar_pulse(int t,int e,int to){ double h_cm = vol/8.517; double d_mm = 205 + (1000.0/8.517 - h_cm)*10 + ((rand()%3)-1)*1.0; return (int)(d_mm*20000/3434.0); }
+static double noisy = 0;                                  // probability that a shot returns a random (false) echo
+int sys_sonar_pulse(int t,int e,int to){ if (noisy > 0 && rand() / (double)RAND_MAX < noisy) return 150 + rand() % 23000; double h_cm = vol/8.517; double d_mm = 205 + (1000.0/8.517 - h_cm)*10 + ((rand()%3)-1)*1.0; return (int)(d_mm*20000/3434.0); }
 int sys_mqtt_state(void){ return mq_state; }
 int sys_mqtt_sub(const char *t,int q){ return 0; }
 int sys_mqtt_age(const char *t){ return 100; }
@@ -55,12 +56,14 @@ static double use_rate_lpm(unsigned t){ int h=(t%86400)/3600; double base = (h>=
 int main(int argc, char **argv)
 {
     int days = argc > 1 ? atoi(argv[1]) : 8;
+    if (getenv("NOISY")) noisy = atof(getenv("NOISY"));
     srand(1); if (argc > 2) now_s = (unsigned)strtoul(argv[2], 0, 10);
     if (argc > 3) { dry = 1; dry_after = now_s + (unsigned)atoi(argv[3]) * 86400; }
     char b0[]="wtms",b1[]="config",b2[]="full_mm=205",b3[]="ml_cm=8517",b4[]="vol_l=1000",b5[]="hist=60",b6[]="interval=5",b7[]="min_in=100",b8[]="flow_min=2"; char *a[] = { b0,b1,b2,b3,b4,b5,b6,b7,b8 };
     wtms_main(9, a);
     char r0[]="wtms",r1[]="run"; char *r[] = { r0, r1 };
     int rm_ok = system("rm -f www_tank/*.csv www_tank/state.json");
+    FILE *truth = fopen("www_tank/truth.csv", "w");
     double use_total = 0, in_total = 0; double dayuse[40]={0}, dayin[40]={0}; int di = 0; unsigned day0 = now_s/86400;
     for (unsigned step = 0; step < (unsigned)days*86400/5; step++) {
         now_s += 5;
@@ -69,8 +72,10 @@ int main(int argc, char **argv)
         double inn = pump ? (dry && now_s > dry_after ? 2.0 : 32.0)*dtmin : 0;
         vol += inn - u; if (vol > 1000) vol = 1000;
         dayuse[(now_s/86400)-day0] += u; dayin[(now_s/86400)-day0] += inn;
-        wtms_main(2, r);                     // the service ticks every 5 s; the program gates itself to every 15 s
+        wtms_main(2, r);
+        if (step % 12 == 0) fprintf(truth, "%u,%.1f\n", now_s, vol);                     // the service ticks every 5 s; the program gates itself to every 15 s
     }
+    fclose(truth);
     printf("true daily usage / intake (L):\n");
     for (int i=0;i<=days;i++) printf("  day %d  use %.1f  in %.1f\n", i, dayuse[i], dayin[i]);
     return 0;

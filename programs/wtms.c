@@ -117,6 +117,9 @@ static int measure(void)
     }
     if (n < (c_samples + 1) / 2) return -1;                    // at least half of the echoes must be valid
     sort(v, n);
+    int agree = 0;                                             // and a majority must agree with the median within ~1 cm (60 us): a damp or noisy sensor
+    for (int i = 0; i < n; i++) if (v[i] - v[n / 2] < 60 && v[n / 2] - v[i] < 60) agree++;      // returns scattered echoes whose median would be a false level
+    if (agree < c_samples / 2 + 1) return -1;
     int d = (int)((long long)v[n / 2] * (3313 + g_t100 * 606 / 10000) / 20000);
     if (d < 25 || d > c_empty + 150) return -1;           // closer than the sensor's dead zone or farther than the tank floor: not a real water echo
     return d;
