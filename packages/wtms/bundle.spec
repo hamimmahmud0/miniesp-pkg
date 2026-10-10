@@ -1,6 +1,6 @@
 # wtms bundle (read by tools/mkbundle.py): builds the program, hashes every file, writes pkgs/wtms/ and the journal entry.
 name wtms
-version 1.0
+version 1.1
 abi 4
 # program SOURCE.c -> DEST on the board (built with programs/build.sh)
 program ../../programs/wtms.c -> /esp/.local/bin/wtms.aot
@@ -14,6 +14,7 @@ file web/config.html -> /www/tank/config.html
 file web/login.html -> /www/tank/login.html
 file web/tank.css -> /www/tank/tank.css
 file web/tank.js -> /www/tank/tank.js
+file web/chart.js -> /www/tank/chart.js
 service wtms
 note wtms installed. Next:  wtms setup   (interactive: web port, MQTT broker/port, tank size, pins ...)
 note or without prompts:  wtms setup --headless mqtt_host=192.168.0.50 mqtt_pass=SECRET web_port=80 length=100 width=100 height=100 full_cm=15

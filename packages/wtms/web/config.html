@@ -33,18 +33,21 @@
 <div class="card"><h2><svg class="ic"><use href="#i-power"/></svg>Force control</h2><div id="ctlbox"></div></div>
 <form id="f" onsubmit="return save(event)" style="display:contents">
 <div class="card"><h2><svg class="ic"><use href="#i-droplet"/></svg>Tank</h2>
- <div class="row"><label>Capacity (litres)<small>when full</small></label><input name="vol_l" type="number" min="1"></div>
- <div><a href="#" onclick="document.getElementById('calc').style.display='block';return false" class="sub">Calculate from tank dimensions&hellip;</a></div>
+ <div class="row"><label>Total storage (litres)<small>water volume at 100 %</small></label><input name="vol_l" type="number" min="1" max="200000" oninput="derive()"></div>
+ <div class="row"><label>Litres per cm of water height<small>1000 L PVC tank: 8.517</small></label><input name="lpcm_l" type="number" step="0.001" min="0" oninput="derive()"></div>
+ <div class="row"><label>Sensor to water at 100 % (cm)<small>the gap above a full tank, at least 2.5</small></label><input name="full_cm" type="number" step="0.1" min="2.5" oninput="derive()"></div>
+ <div class="row"><label>Sensor to water when EMPTY (cm)<small id="emp_note">calculated from the settings above</small></label><input name="empty_cm" type="number" step="0.1" id="empty_cm"></div>
+ <div class="sub" id="dv" style="margin:6px 18px 0"></div>
+ <div class="btns"><button type="button" class="b sec" onclick="preset()">1000 L PVC tank preset</button>
+  <button type="button" class="b sec" onclick="document.getElementById('calc').style.display='block'">Calculate from dimensions&hellip;</button></div>
  <div class="calc" id="calc">
   <div class="row"><label>Shape</label><select id="shape" onchange="shapeUI()"><option value="r">Rectangular</option><option value="c">Cylinder</option></select></div>
   <div class="row" id="rl"><label>Length (cm)</label><input id="cl" type="number" min="1"></div>
   <div class="row" id="rw"><label>Width (cm)</label><input id="cw" type="number" min="1"></div>
   <div class="row" id="rd" style="display:none"><label>Diameter (cm)</label><input id="cd" type="number" min="1"></div>
   <div class="row"><label>Water height when full (cm)</label><input id="ch" type="number" min="1"></div>
-  <button type="button" class="b sec" onclick="calc()">Use this capacity</button>
+  <button type="button" class="b sec" onclick="calc()">Use these dimensions</button>
  </div>
- <div class="row"><label>Sensor to water when FULL (cm)<small>at least 2.5</small></label><input name="full_cm" type="number" step="0.1" min="2.5"></div>
- <div class="row"><label>Sensor to water when EMPTY (cm)<small>to the tank floor</small></label><input name="empty_cm" type="number" step="0.1"></div>
  <div class="btns"><button type="button" class="b sec" onclick="readSensor()">Read sensor now</button>
   <button type="button" class="b sec" onclick="useReading('full_cm')">Use reading as FULL</button>
   <button type="button" class="b sec" onclick="useReading('empty_cm')">Use reading as EMPTY</button></div>
@@ -106,17 +109,18 @@ function msg(t,c){$('msg').textContent=t;$('msg').className='msg '+(c||'')}
 function fill(){
   for(const el of F.elements){
     if(!el.name)continue; const n=el.name;
-    if(n==='full_cm')el.value=cfg.full_mm/10; else if(n==='empty_cm')el.value=cfg.empty_mm/10;
+    if(n==='full_cm')el.value=cfg.full_mm/10; else if(n==='empty_cm')el.value=cfg.empty_mm/10; else if(n==='lpcm_l')el.value=cfg.ml_cm/1000;
     else if(n==='rise_pct')el.value=cfg.rise_pm/10; else if(n in cfg)el.value=cfg[n];
   }
 }
-async function load(){ try{const r=await T.call('get'); if(r.error)return; cfg=r;fill();msg('')}catch(e){msg(e.message,'e')} }
+async function load(){ try{const r=await T.call('get'); if(r.error)return; cfg=r;fill();derive();msg('')}catch(e){msg(e.message,'e')} }
 function collect(){
   const a=[];
   for(const el of F.elements){ if(!el.name)continue; const n=el.name,v=el.value.trim(); let k=n,val=v;
     if(n==='full_cm'){k='full_mm';val=Math.round(parseFloat(v)*10)}
     else if(n==='empty_cm'){k='empty_mm';val=Math.round(parseFloat(v)*10)}
     else if(n==='rise_pct'){k='rise_pm';val=Math.round(parseFloat(v)*10)}
+    else if(n==='lpcm_l'){k='ml_cm';val=Math.round(parseFloat(v||'0')*1000)}
     if(typeof val==='number'&&isNaN(val)){throw new Error('check the number in "'+n+'"')}
     if(['name','pump','ha'].includes(n)&&!/^[A-Za-z0-9_.,:@\/-]*$/.test(String(val)))throw new Error('"'+n+'" may only contain letters, digits and _ . , : @ / -');
     a.push(k+'='+val);
@@ -139,12 +143,20 @@ async function readSensor(){
       else {lastMM=null;$('rd_msg').textContent='No echo: check wiring and pins'}}
   catch(e){$('rd_msg').textContent=e.message}
 }
-async function useReading(f){ if(lastMM===null)await readSensor(); if(lastMM!==null){F.elements[f].value=(lastMM/10).toFixed(1);$('rd_msg').textContent+=' \u2014 copied to '+f.replace('_cm','').toUpperCase()+'; press Save.'} }
+async function useReading(f){ if(lastMM===null)await readSensor(); if(lastMM!==null){F.elements[f].value=(lastMM/10).toFixed(1);if(f==='empty_cm'){const v=+F.elements.vol_l.value,fu=+F.elements.full_cm.value,col=lastMM/10-fu;if(v>0&&col>1)F.elements.lpcm_l.value=(v/col).toFixed(3)}derive();$('rd_msg').textContent+=' \u2014 copied to '+f.replace('_cm','').toUpperCase()+'; press Save.'} }
+// With litres-per-cm set, the EMPTY distance follows from the storage: empty = full + volume / (litres per cm)
+function derive(){
+  const v=+F.elements.vol_l.value, k=+F.elements.lpcm_l.value, f=+F.elements.full_cm.value, e=$('empty_cm');
+  if(k>0&&v>0&&f>0){ const h=v/k; e.value=(f+h).toFixed(1); e.readOnly=true; $('emp_note').textContent='calculated: full + water column';
+    $('dv').textContent='Water column '+h.toFixed(1)+' cm \u00b7 empty reads '+(f+h).toFixed(1)+' cm \u00b7 each cm of water = '+k.toFixed(3)+' L, each 1 % = '+(v/100).toFixed(1)+' L' }
+  else { e.readOnly=false; $('emp_note').textContent='to the tank floor (enter it by hand)'; $('dv').textContent='' }
+}
+function preset(){ F.elements.vol_l.value=1000; F.elements.lpcm_l.value='8.517'; F.elements.full_cm.value='20.5'; derive(); msg('1000 L PVC tank values filled in \u2014 press Save.','g') }
 function shapeUI(){const c=$('shape').value==='c';$('rl').style.display=$('rw').style.display=c?'none':'';$('rd').style.display=c?'':'none'}
 function calc(){
   const h=+$('ch').value; let l;
   if($('shape').value==='c'){const d=+$('cd').value;l=Math.PI*d*d/4*h/1000}else l=$('cl').value*$('cw').value*h/1000;
-  if(!(l>0)){msg('Fill in the dimensions','e');return} F.elements.vol_l.value=Math.round(l); msg('Capacity set to '+Math.round(l)+' L \u2014 press Save.','g');
+  if(!(l>0)){msg('Fill in the dimensions','e');return} F.elements.vol_l.value=Math.round(l); F.elements.lpcm_l.value=(l/h).toFixed(3); derive(); msg('Capacity '+Math.round(l)+' L, '+(l/h).toFixed(3)+' L per cm \u2014 press Save.','g');
 }
 async function loadMqtt(){
   try{const r=await T.call('mqttget'); if(!r.ok)return; $('mh').value=r.host;$('mp').value=r.port;$('mu').value=r.user;

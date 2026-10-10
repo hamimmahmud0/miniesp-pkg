@@ -32,7 +32,11 @@ Faults (latched except `sensor`): `sensor` (no valid echo → pump stopped), `ma
 `name pump ha trig echo temp empty_mm full_mm vol_l on_pct off_pct max_run rest flow_min rise_pm auto hist` — see the header of `programs/tank.c`. Stored in NVS (survives reboots and firmware updates).
 
 ## Calibrate
-With the tank empty/full run `wtms read` and set `empty_mm` / `full_mm` to the measured distances (mm). Litres assume straight walls (linear).
+Tank model: `vol_l` = total storage (L), `ml_cm` = millilitres of water per cm of height (1000 L PVC tank: `8517`), `full_mm` = sensor-to-water distance at 100 % (`205`). The EMPTY distance is derived (`empty_mm = full_mm + vol_l*10000/ml_cm`, 1379 mm here); `ml_cm=0` falls back to the old linear model with a hand-set `empty_mm`. Check with `wtms read` at a known level.
+
+## Graphs, rates and daily totals
+The dashboard (`/tank/`) draws four charts on canvas (no external libraries; hover or touch for values): tank level (L and %, pump runs shaded, start/stop lines), water usage rate (L/min), pump intake rate per run (L/min), and daily water usage (used vs pumped in, last 7/14/30 days). Tiles show the current usage and intake rates, today's usage, pump time and an estimate of when the pump starts or the tank is full.
+Data comes from files in `/www/tank/`: `history.csv` (`time,level 0.1%,litres,pump,usage ml/min,intake ml/min`, one row per `hist` seconds), `runs.csv` (`start,seconds,added dL` per pump run) and `daily.csv` (`yyyymmdd,used dL,pumped dL,pump s,runs`, written at local midnight, so set the time zone). Usage while the pump is idle is the drop in volume (signed, so sensor noise cancels over a day); while it runs the recent idle usage is assumed to continue, so intake and daily totals are estimates (the sensor resolves about 1 L). `hist_kb` (default 32) sets how much history is kept.
 
 ## Wiring
 HC-SR04 VCC 5 V, GND, TRIG → GPIO33, ECHO → GPIO32 **through a 1k/2k divider** (5 V → 3.3 V). Optional DS18B20 data pin with a 4.7k pull-up to 3.3 V.

@@ -12,9 +12,11 @@
 // Configuration (persistent, NVS key "tank.cfg"):
 //   name=tank1               MQTT topic prefix            pump=relay_node_1/relay/waterpump   relay topic prefix (/set, /state)
 //   trig=33 echo=32          HC-SR04 pins (echo needs a 5V->3.3V divider)     temp=0   DS18B20 GPIO for temperature compensation (0 = none)
-//   empty_mm=1000            sensor face to the water surface when the tank is EMPTY
-//   full_mm=150              sensor face to the water surface when the tank is FULL (>= 25 mm: the sensor's dead zone)
-//   vol_l=1000               litres at full (assumes straight walls: litres scale linearly with level)
+//   full_mm=205              sensor face to the water surface when the tank is FULL (>= 25 mm: the sensor's dead zone)
+//   vol_l=1000               total storage in litres (the tank's water volume at 100 %)
+//   ml_cm=8517               millilitres of water per cm of water height (8.517 L/cm for a 1000 L PVC tank). With ml_cm set, the EMPTY distance is
+//                            derived: empty_mm = full_mm + vol_l*10000/ml_cm (1000 L at 8.517 L/cm = 117.4 cm of water). ml_cm=0: use empty_mm
+//   empty_mm=1379            sensor face to the water surface when the tank is EMPTY (only used when ml_cm=0; otherwise derived)
 //   on_pct=25 off_pct=95     start the pump at/below on_pct, stop at/above off_pct
 //   max_run=30               stop (and latch a fault) after this many minutes of pumping
 //   rest=5                   minimum minutes between runs     flow_min=3 rise_pm=10   fault "no_flow" if the level rose < rise_pm/10 % in flow_min minutes
@@ -27,20 +29,25 @@
 typedef struct { const char *k; void *p; int n; } ik;       // n == 0: int, else a string of n bytes
 
 static char c_name[24] = "tank1", c_pump[64] = "relay_node_1/relay/waterpump", c_ha[24] = "homeassistant";
-static int c_trig = 33, c_echo = 32, c_temp = 0, c_empty = 1000, c_full = 150, c_vol = 1000, c_on = 25, c_off = 95;
+static int c_trig = 33, c_echo = 32, c_temp = 0, c_empty = 1379, c_full = 205, c_vol = 1000, c_ml = 8517, c_on = 25, c_off = 95;
 static int c_maxrun = 30, c_rest = 5, c_flowmin = 3, c_rise = 10, c_auto = 1, c_hist = 300;
-static int c_interval = 15, c_samples = 7, c_jump = 15, c_goodn = 3, c_histkb = 16, c_tempc = 20;
+static int c_interval = 15, c_samples = 7, c_jump = 15, c_goodn = 3, c_histkb = 32, c_tempc = 20;
 static const ik CFG[] = {
     { "name", c_name, sizeof c_name }, { "pump", c_pump, sizeof c_pump }, { "ha", c_ha, sizeof c_ha },
     { "trig", &c_trig, 0 }, { "echo", &c_echo, 0 }, { "temp", &c_temp, 0 }, { "empty_mm", &c_empty, 0 }, { "full_mm", &c_full, 0 },
-    { "vol_l", &c_vol, 0 }, { "on_pct", &c_on, 0 }, { "off_pct", &c_off, 0 }, { "max_run", &c_maxrun, 0 }, { "rest", &c_rest, 0 },
+    { "vol_l", &c_vol, 0 }, { "ml_cm", &c_ml, 0 }, { "on_pct", &c_on, 0 }, { "off_pct", &c_off, 0 }, { "max_run", &c_maxrun, 0 }, { "rest", &c_rest, 0 },
     { "flow_min", &c_flowmin, 0 }, { "rise_pm", &c_rise, 0 }, { "auto", &c_auto, 0 }, { "hist", &c_hist, 0 },
     { "interval", &c_interval, 0 }, { "samples", &c_samples, 0 }, { "jump_pct", &c_jump, 0 }, { "good_n", &c_goodn, 0 }, { "hist_kb", &c_histkb, 0 }, { "temp_c", &c_tempc, 0 },
 };
 static int s_force, s_funtil, s_good, s_ema = -1, s_since, s_start, s_lastoff, s_fault, s_lastrun, s_lasthist, s_disc, s_jumps, s_hold;
+// Water accounting (volumes in decilitres): pv = volume at the previous history sample + 1 (0 = none), pps = pump seconds since then, urate = recent idle
+// usage in ml/min, dd = date (yyyymmdd) of the running day, du/di/dps/dr = that day's usage, pump intake (dL), pump seconds, pump runs, lr* = last pump run
+static int s_pv, s_pps, s_urate, s_dd, s_du, s_di, s_dps, s_dr, s_lrl, s_lrs, s_lrt;
 static const ik STT[] = {
     { "ema", &s_ema, 0 }, { "force", &s_force, 0 }, { "funtil", &s_funtil, 0 }, { "good", &s_good, 0 }, { "since", &s_since, 0 }, { "start", &s_start, 0 }, { "lastoff", &s_lastoff, 0 }, { "fault", &s_fault, 0 },
     { "lastrun", &s_lastrun, 0 }, { "lasthist", &s_lasthist, 0 }, { "disc", &s_disc, 0 }, { "jumps", &s_jumps, 0 }, { "hold", &s_hold, 0 },
+    { "pv", &s_pv, 0 }, { "pps", &s_pps, 0 }, { "urate", &s_urate, 0 }, { "dd", &s_dd, 0 }, { "du", &s_du, 0 }, { "di", &s_di, 0 }, { "dps", &s_dps, 0 },
+    { "dr", &s_dr, 0 }, { "lrl", &s_lrl, 0 }, { "lrs", &s_lrs, 0 }, { "lrt", &s_lrt, 0 },
 };
 #define N(t) ((int)(sizeof(t) / sizeof((t)[0])))
 #define DISC_VER 2
@@ -48,7 +55,8 @@ static int g_quiet;
 static char g_local_cmd[24];                         // command given on the command line / CGI (handled like an MQTT command)
 static const char *FAULTS[] = { "none", "sensor", "max_run", "no_flow" };
 enum { F_NONE, F_SENSOR, F_MAXRUN, F_NOFLOW };
-static const char *DIR = "/www/tank", *HIST = "/www/tank/history.csv", *HIST_OLD = "/www/tank/history.old.csv", *STATE_JSON = "/www/tank/state.json";
+static const char *DIR = "/www/tank", *HIST = "/www/tank/history.csv", *HIST_OLD = "/www/tank/history.old.csv", *STATE_JSON = "/www/tank/state.json",
+                  *DAILY = "/www/tank/daily.csv", *DAILY_OLD = "/www/tank/daily.old.csv", *RUNS = "/www/tank/runs.csv", *RUNS_OLD = "/www/tank/runs.old.csv";
 
 static int eq(const char *a, const char *b) { return !m_strcmp(a, b); }
 
@@ -113,6 +121,12 @@ static int measure(void)
     return d;
 }
 
+// With ml_cm set the EMPTY distance follows from the total storage and the litres per cm of water height.
+static void derive(void)
+{
+    if (c_ml > 0 && c_vol > 0) c_empty = c_full + c_vol * 10000 / c_ml;
+}
+
 static int level_pm(int d_mm)
 {
     int span = c_empty - c_full; if (span < 50) span = 50;
@@ -124,30 +138,64 @@ static char tb[128], pb[760];
 static void topic(const char *fmt) { m_snprintf(tb, sizeof tb, fmt, c_name); }
 static int pub(const char *t, const char *p, int retain) { return sys_mqtt_pub(t, p, (int)m_strlen(p), retain, 1); }
 
+static int pm_run_dl(int pm, int dur)                  // decilitres added by the pump run in progress / just ended: level rise + the usage that went on meanwhile
+{
+    return (pm - s_start) * c_vol / 100 + s_urate * (dur > 3600 ? 3600 : dur) / 6000;
+}
+
 static int mk_state(char *b, int n, int pm, int dist, const char *pump, int auto_)
 {
-    int t10 = g_t100 / 10;
+    int t10 = g_t100 / 10, live = s_since && tnow() - (unsigned)s_since >= 60, dur = live ? (int)(tnow() - (unsigned)s_since) : 0;
+    int in = live ? pm_run_dl(pm, dur) * 6000 / dur : s_lrs > 0 ? s_lrl * 6000 / s_lrs : 0;     // pump intake ml/min
+    if (in < 0) in = 0;
     return m_snprintf(b, n, "{\"ts\":%u,\"level\":%d.%d,\"litres\":%d,\"distance_cm\":%d.%d,\"pump\":\"%s\",\"auto\":\"%s\",\"fault\":\"%s\",\"temp\":%d.%d,"
-                      "\"on_pct\":%d,\"off_pct\":%d,\"vol\":%d,\"force\":\"%s\",\"force_left\":%d}",
+                      "\"on_pct\":%d,\"off_pct\":%d,\"vol\":%d,\"force\":\"%s\",\"force_left\":%d,\"lpcm\":%d,"
+                      "\"use_lpm\":%d.%02d,\"in_lpm\":%d.%02d,\"td_use\":%d.%d,\"td_in\":%d.%d,\"td_pump_s\":%d,\"td_runs\":%d,\"td_date\":%d,\"lr_l\":%d.%d,\"lr_s\":%d,\"lr_t\":%d}",
                       sys_time(), pm / 10, pm % 10, c_vol * pm / 1000, dist / 10, iabs(dist) % 10, pump, auto_ ? "ON" : "OFF", FAULTS[s_fault],
                       t10 / 10, iabs(t10) % 10, c_on, c_off, c_vol, s_force == 1 ? "on" : s_force == 2 ? "off" : "none",
-                      s_force && s_funtil && (unsigned)s_funtil > tnow() ? (int)((unsigned)s_funtil - tnow()) : 0);
+                      s_force && s_funtil && (unsigned)s_funtil > tnow() ? (int)((unsigned)s_funtil - tnow()) : 0, c_ml,
+                      s_urate / 1000, s_urate % 1000 / 10, in / 1000, in % 1000 / 10, (s_du < 0 ? 0 : s_du) / 10, iabs(s_du) % 10, s_di / 10, s_di % 10, s_dps, s_dr, s_dd,
+                      s_lrl / 10, iabs(s_lrl) % 10, s_lrs, s_lrt);
 }
 
 static void write_file(const char *path, const char *s) { int fd = sys_open(path, 1); if (fd >= 0) { sys_write(fd, s, (int)m_strlen(s)); sys_close(fd); } }
 
+static void append_line(const char *path, const char *old, int max, const char *l, int n)
+{
+    if (sys_fsize(path) > max) sys_rename(path, old);
+    int fd = sys_open(path, 2);
+    if (fd < 0) return;
+    sys_write(fd, l, n);
+    sys_close(fd);
+}
+
+// One history sample every `hist` seconds: level, pump state and the water accounting for the interval since the previous sample.
+// Usage: when the pump was idle, the drop in volume (signed, so sensor noise cancels out over a day); while it ran, the recent idle rate is assumed to
+// continue, and the pump's intake is the volume change plus that usage. Row: time,level(0.1%),litres,pump,usage ml/min,pump intake ml/min.
 static void history(int pm, int pumpon)
 {
     if (!sys_time()) return;
     unsigned now = sys_time();
     if (s_lasthist && now - (unsigned)s_lasthist < (unsigned)c_hist) return;
+    int dt = s_lasthist ? (int)(now - (unsigned)s_lasthist) : 0, v = c_vol * pm / 100, u = 0, in = 0, um = 0, im = 0;
+    if (s_pv > 0 && dt >= 30 && dt <= 3 * c_hist + 60) {
+        int dv = v - (s_pv - 1);
+        if (s_pps * 10 < dt) { u = -dv; s_urate = (3 * s_urate + (u > 0 ? u * 6000 / dt : 0)) / 4; }
+        else { u = s_urate * dt / 6000; in = dv + u; if (in < 0) in = 0; }
+        um = u > 0 ? u * 6000 / dt : 0;
+        im = in > 0 && s_pps > 0 ? in * 6000 / s_pps : 0;
+    }
     s_lasthist = (int)now;
-    if (sys_fsize(HIST) > c_histkb * 1000) sys_rename(HIST, HIST_OLD);
-    int fd = sys_open(HIST, 2);
-    if (fd < 0) return;
-    char l[48]; int n = m_snprintf(l, sizeof l, "%u,%d,%d,%d\n", now, pm, c_vol * pm / 1000, pumpon);
-    sys_write(fd, l, n);
-    sys_close(fd);
+    int lt[8]; sys_localtime(now, lt, 32);
+    int date = lt[5] * 10000 + (lt[4] + 1) * 100 + lt[3];
+    if (s_dd && date != s_dd) {                                    // a new day: store the finished one
+        char l[56]; int k = m_snprintf(l, sizeof l, "%d,%d,%d,%d,%d\n", s_dd, s_du < 0 ? 0 : s_du, s_di, s_dps, s_dr);
+        append_line(DAILY, DAILY_OLD, 12000, l, k);
+        s_du = s_di = s_dps = s_dr = 0;
+    }
+    s_dd = date; s_du += u; s_di += in; s_dps += s_pps; s_pv = v + 1; s_pps = 0;
+    char l[64]; int k = m_snprintf(l, sizeof l, "%u,%d,%d,%d,%d,%d\n", now, pm, c_vol * pm / 1000, pumpon, um, im);
+    append_line(HIST, HIST_OLD, c_histkb * 1000, l, k);
 }
 
 // Home Assistant MQTT discovery (retained). `extra` holds the entity specific JSON fields.
@@ -207,6 +255,7 @@ static int run_cycle(void)
         if (now - (unsigned)s_lastrun < every - 2) return 0;
     }
     sys_mkdir(DIR);
+    int was_since = s_since, prev_run = s_lastrun;                      // to spot the end of a pump run and to count pump seconds
     char node[64]; int i = 0;                                         // relay-node base topic = everything before "/relay/"
     {
         const char *p = c_pump; int found = -1;
@@ -291,16 +340,24 @@ static int run_cycle(void)
         }
     }
     s_lastrun = (int)now;
+    if (pump_on && prev_run && (int)now > prev_run) s_pps += (int)now - prev_run > 60 ? 60 : (int)now - prev_run;
 
     // ---- publish ----
     if (!sensor_ok) { d = c_empty; pm = s_ema >= 0 ? s_ema : 0; }
-    static char js[460];
+    static char js[700];
     mk_state(js, sizeof js, pm, d, pump_on ? "ON" : "OFF", c_auto);
     write_file(STATE_JSON, js);
     if (mq) {
         if (c_ha[0] && s_disc != DISC_VER) discovery();
         topic("%s/state"); pub(tb, js, 1);
         topic("%s/auto/state"); pub(tb, c_auto ? "ON" : "OFF", 1);
+    }
+    if (was_since && !s_since && sys_time() && (int)now - was_since >= 30) {        // a pump run just ended: remember what it delivered
+        int dur = (int)now - was_since, added = pm_run_dl(pm, dur);
+        if (added < 0) added = 0;
+        s_lrl = added; s_lrs = dur; s_lrt = was_since; s_dr++;
+        char l[40]; int k = m_snprintf(l, sizeof l, "%d,%d,%d\n", was_since, dur, added);
+        append_line(RUNS, RUNS_OLD, 8000, l, k);
     }
     history(pm, pump_on);
     save("tank.st", STT, N(STT));
@@ -320,10 +377,12 @@ static void show_cfg(void)
 // Validate the in-memory configuration and store it; returns an error text or NULL.
 static const char *cfg_validate_save(void)
 {
+    if (c_ml < 0 || (c_ml > 0 && c_ml < 100)) return "ml_cm must be 0 (use empty_mm) or at least 100";
+    derive();
     if (c_full < 25) return "full_mm must be at least 25 (sensor dead zone)";
     if (c_empty <= c_full + 50) return "empty_mm must be larger than full_mm by more than 50";
     if (c_on >= c_off || c_off > 100 || c_on < 0) return "need 0 <= on_pct < off_pct <= 100";
-    if (c_vol < 1) return "vol_l must be at least 1";
+    if (c_vol < 1 || c_vol > 200000) return "vol_l must be 1..200000";
     if (c_maxrun < 1 || c_rest < 0 || c_flowmin < 1 || c_hist < 10) return "max_run/flow_min >= 1, rest >= 0, hist >= 10";
     if (c_interval < 5 || c_interval > 3600) return "interval must be 5..3600 seconds";
     if (c_samples < 3 || c_samples > 15) return "samples must be 3..15";
@@ -333,7 +392,7 @@ static const char *cfg_validate_save(void)
     if (c_tempc < -30 || c_tempc > 60) return "temp_c must be -30..60";
     if (!c_name[0] || !c_pump[0]) return "name and pump must not be empty";
     save("tank.cfg", CFG, N(CFG));
-    s_disc = 0; s_ema = -1; s_jumps = 0; s_good = 0;
+    s_disc = 0; s_ema = -1; s_jumps = 0; s_good = 0; s_pv = 0; s_pps = 0;
     save("tank.st", STT, N(STT));
     return NULL;
 }
@@ -432,7 +491,7 @@ static int do_act(const char *cmd)                           // run a control co
     g_local_cmd[n] = 0;
     g_quiet = 1;
     run_cycle();
-    char js[460]; int fd = sys_open(STATE_JSON, 0), k = 0;
+    char js[700]; int fd = sys_open(STATE_JSON, 0), k = 0;
     if (fd >= 0) { k = sys_read(fd, js, sizeof js - 1); sys_close(fd); }
     if (k < 0) k = 0;
     js[k] = 0;
@@ -631,9 +690,9 @@ static void sys_cmd(const char *a, const char *b, const char *c, const char *d, 
 
 static void shape_volume(void)                                       // litres from the tank dimensions
 {
-    if (su_shape == 'r') c_vol = su_a * su_b / 10 * su_ht / 100;
-    else if (su_shape == 'c') c_vol = (int)((long long)785 * su_a * su_a / 1000 * su_ht / 1000);
-    else if (su_shape == 'l') c_vol = su_lit;
+    if (su_shape == 'r') { c_vol = su_a * su_b / 10 * su_ht / 100; c_ml = su_a * su_b; }
+    else if (su_shape == 'c') { c_vol = (int)((long long)785 * su_a * su_a / 1000 * su_ht / 1000); c_ml = (int)((long long)785 * su_a * su_a / 1000); }
+    else if (su_shape == 'l') { c_vol = su_lit; c_ml = su_ht > 0 ? (int)((long long)su_lit * 1000 / su_ht) : 0; }
     if (c_vol < 1) c_vol = 1;
 }
 
@@ -814,6 +873,7 @@ static int do_setup(int argc, char **argv)
 int main(int argc, char **argv)
 {
     load("tank.cfg", CFG, N(CFG));
+    derive();
     load("tank.st", STT, N(STT));
     const char *c = argc > 1 ? argv[1] : "";                  // no default action: `wtms` alone must never drive the pump
     if (eq(c, "run")) return run_cycle();
@@ -844,7 +904,7 @@ int main(int argc, char **argv)
     if (eq(c, "status")) {
         show_cfg();
         m_printf("-- state: fault=%s pump_since=%d ema=%d\n", FAULTS[s_fault], s_since, s_ema);
-        char js[420]; int n = sys_fsize(STATE_JSON);
+        char js[700]; int n = sys_fsize(STATE_JSON);
         int fd = sys_open(STATE_JSON, 0);
         if (fd >= 0 && n > 0) { n = sys_read(fd, js, sizeof js - 1); if (n > 0) { js[n] = 0; m_printf("last: %s\n", js); } sys_close(fd); }
         return 0;
