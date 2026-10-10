@@ -27,6 +27,11 @@
 // board dies. A sensor failure, a full tank, the run-time limit or a missing level rise all stop the pump.
 #include "mini.h"
 
+#ifdef CGI_BUILD        // the web page's copy: no setup, no discovery
+#define NO_SETUP 1
+#define NO_DISC 1
+#endif
+
 typedef struct { const char *k; void *p; int n; } ik;       // n == 0: int, else a string of n bytes
 
 static char c_name[24] = "tank1", c_pump[64] = "relay_node_1/relay/waterpump", c_ha[24] = "homeassistant";
@@ -204,6 +209,9 @@ static void history(int pm, int pumpon)
     append_line(HIST, HIST_OLD, c_histkb * 1000, l, k);
 }
 
+#ifdef NO_DISC          // the CGI build leaves Home Assistant discovery to the service (smaller: it must load while RAM is fragmented)
+static void discovery(void) {}
+#else
 // Home Assistant MQTT discovery (retained). `extra` holds the entity specific JSON fields.
 static void disc(const char *comp, const char *obj, const char *label, const char *extra)
 {
@@ -245,6 +253,7 @@ static void discovery(void)
     disc("button", "release", "Tank release force (auto)", x);
     s_disc = DISC_VER;
 }
+#endif
 
 static int new_cmd(const char *t, char *buf, int n, unsigned now)    // a message that arrived since the previous cycle, or 0
 {
