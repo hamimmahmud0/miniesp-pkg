@@ -116,7 +116,8 @@ async function loadAll(){
 }
 /* ---- charts ---- */
 function win(t1){ return hours?[t1-hours*3600,t1]:[H.length?H[0][0]:t1-3600,t1] }
-function bands(rows){ const b=[]; for(let i=0;i<rows.length;i++) if(rows[i][3]){ const t1=i+1<rows.length?rows[i+1][0]:rows[i][0]+300; if(b.length&&b[b.length-1][1]>=rows[i][0]-1)b[b.length-1][1]=t1; else b.push([rows[i][0],t1]) } return b }
+function dtOf(rows){ const d=rows.slice(1).map((r,i)=>r[0]-rows[i][0]).sort((a,b)=>a-b); return d.length?Math.max(5,d[d.length>>1]):300 }
+function bands(rows){ const b=[], dt=dtOf(rows); for(let i=0;i<rows.length;i++) if(rows[i][3]){ const t1=i+1<rows.length?rows[i+1][0]:rows[i][0]+dt; if(b.length&&b[b.length-1][1]>=rows[i][0]-1)b[b.length-1][1]=t1; else b.push([rows[i][0],t1]) } return b }
 function mk(id,lg){ if(!ch[id]){ ch[id]=new Chart($(id).parentNode,{}); } return ch[id] }
 function legend(el,items,chart){
   el.innerHTML=''; for(const it of items){ const b=document.createElement('button'); b.type='button'; b.className='lg'+(it.off?' off':''); b.innerHTML='<i style="background:'+it.color+'"></i>'+it.name; if(it.sid){ b.onclick=()=>{ const s=chart.opt.series.find(x=>x.id===it.sid); s.visible=s.visible===false; chart.draw(); b.classList.toggle('off',s.visible===false) } } else b.disabled=true; el.appendChild(b) }
@@ -135,13 +136,13 @@ function drawAll(){
     if(pts.length){let mn=Infinity,mx=0,sm=0;for(const p of pts){mn=Math.min(mn,p[1]);mx=Math.max(mx,p[1]);sm+=p[1]} $('r_level').textContent='Range '+dm(w0)+' '+hm(w0)+' – '+dm(w1)+' '+hm(w1)+' · min '+Math.round(mn)+' L · max '+Math.round(mx)+' L · avg '+Math.round(sm/pts.length)+' L · '+bands(rows).length+' pump run'+(bands(rows).length==1?'':'s')}
     else $('r_level').textContent='' ; $('c_level').setAttribute('aria-label','Tank level, '+pts.length+' samples') }
   // usage rate
-  { const c=mk('c_use'), pts=rows.filter(r=>r.length>=6).map(r=>[r[0],r[4]/1000,r]), rad=hours===6?1:hours===24?3:6, sm=pts.map((p,i)=>{let a=0,n=0;for(let k=Math.max(0,i-rad);k<=Math.min(pts.length-1,i+rad);k++){a+=pts[k][1];n++}return [p[0],a/n,p[2]]});
+  { const c=mk('c_use'), pts=rows.filter(r=>r.length>=6).map(r=>[r[0],r[4]/1000,r]), dt=dtOf(rows), rad=Math.max(1,Math.round((hours===6?600:hours===24?1200:2400)/dt)), win=Math.round((2*rad+1)*dt/60), sm=pts.map((p,i)=>{let a=0,n=0;for(let k=Math.max(0,i-rad);k<=Math.min(pts.length-1,i+rad);k++){a+=pts[k][1];n++}return [p[0],a/n,p[2]]});
     const avg=pts.length?pts.reduce((a,p)=>a+p[1],0)/pts.length:0, peak=pts.reduce((a,p)=>Math.max(a,p[1]),0);
     c.set({xmode:'time',x0:w0,x1:w1,left:{min:0,fmt:v=>f2(v)},series:[{id:'us',name:'Usage',color:cuse,type:'area',axis:'left',pts:sm}],bands:bands(rows),
       hlines:pts.length?[{y:avg,label:'avg '+f2(avg)+' L/min',color:mute}]:[],empty:rows.length&&!pts.length?'Collecting rate data (needs the updated controller)…':'Not enough history yet',
-      tip:i=>{const r=i.items[0].p[2];return '<b>'+dm(r[0])+' '+hm(r[0])+'</b><br>'+fr(i.items[0].y)+' <span class="mu">('+(2*rad+1)*5+'-min average)</span><br>raw 5-min value '+fr(r[4]/1000)+(r[3]?'<br><span class="tg">estimated: pump was running</span>':'')}});
+      tip:i=>{const r=i.items[0].p[2];return '<b>'+dm(r[0])+' '+hm(r[0])+'</b><br>'+fr(i.items[0].y)+' <span class="mu">('+win+'-min average)</span><br>raw value '+fr(r[4]/1000)+(r[3]?'<br><span class="tg">estimated: pump was running</span>':'')}});
     legend($('lg_use'),[{name:'Usage, L/min',color:cuse,sid:'us'},{name:'Pump running',color:sty('--ok')}],c);
-    $('r_use').textContent=pts.length?'Average '+fr(avg)+' · peak '+fr(peak)+' (smoothed over about '+((2*rad+1)*5)+' minutes)':''; $('c_use').setAttribute('aria-label','Water usage, average '+f2(avg)+' litres per minute') }
+    $('r_use').textContent=pts.length?'Average '+fr(avg)+' · peak '+fr(peak)+' (smoothed over about '+win+' minutes)':''; $('c_use').setAttribute('aria-label','Water usage, average '+f2(avg)+' litres per minute') }
   // intake per run
   { const c=mk('c_in'), rr=RUNS.filter(r=>r.t1>=w0&&r.t0<=w1), pts=rr.map(r=>[r.t0,r.rate,r]), avg=rr.length?rr.reduce((a,r)=>a+r.l,0)/(rr.reduce((a,r)=>a+r.dur,0)/60):0;
     pts.forEach(p=>p[2]={end:p[2].t1,run:p[2]});

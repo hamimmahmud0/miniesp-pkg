@@ -138,9 +138,11 @@ static char tb[128], pb[760];
 static void topic(const char *fmt) { m_snprintf(tb, sizeof tb, fmt, c_name); }
 static int pub(const char *t, const char *p, int retain) { return sys_mqtt_pub(t, p, (int)m_strlen(p), retain, 1); }
 
+static int urate(void) { return s_urate > 0 ? s_urate : 0; }          // recent idle usage ml/min (the stored value is signed so sensor noise averages out)
+
 static int pm_run_dl(int pm, int dur)                  // decilitres added by the pump run in progress / just ended: level rise + the usage that went on meanwhile
 {
-    return (pm - s_start) * c_vol / 100 + s_urate * (dur > 3600 ? 3600 : dur) / 6000;
+    return (pm - s_start) * c_vol / 100 + urate() * (dur > 3600 ? 3600 : dur) / 6000;
 }
 
 static int mk_state(char *b, int n, int pm, int dist, const char *pump, int auto_)
@@ -154,7 +156,7 @@ static int mk_state(char *b, int n, int pm, int dist, const char *pump, int auto
                       sys_time(), pm / 10, pm % 10, c_vol * pm / 1000, dist / 10, iabs(dist) % 10, pump, auto_ ? "ON" : "OFF", FAULTS[s_fault],
                       t10 / 10, iabs(t10) % 10, c_on, c_off, c_vol, s_force == 1 ? "on" : s_force == 2 ? "off" : "none",
                       s_force && s_funtil && (unsigned)s_funtil > tnow() ? (int)((unsigned)s_funtil - tnow()) : 0, c_ml,
-                      s_urate / 1000, s_urate % 1000 / 10, in / 1000, in % 1000 / 10, (s_du < 0 ? 0 : s_du) / 10, iabs(s_du) % 10, s_di / 10, s_di % 10, s_dps, s_dr, s_dd,
+                      urate() / 1000, urate() % 1000 / 10, in / 1000, in % 1000 / 10, (s_du < 0 ? 0 : s_du) / 10, iabs(s_du) % 10, s_di / 10, s_di % 10, s_dps, s_dr, s_dd,
                       s_lrl / 10, iabs(s_lrl) % 10, s_lrs, s_lrt);
 }
 
@@ -180,8 +182,8 @@ static void history(int pm, int pumpon)
     int dt = s_lasthist ? (int)(now - (unsigned)s_lasthist) : 0, v = c_vol * pm / 100, u = 0, in = 0, um = 0, im = 0;
     if (s_pv > 0 && dt >= 30 && dt <= 3 * c_hist + 60) {
         int dv = v - (s_pv - 1);
-        if (s_pps * 10 < dt) { u = -dv; s_urate = (3 * s_urate + (u > 0 ? u * 6000 / dt : 0)) / 4; }
-        else { u = s_urate * dt / 6000; in = dv + u; if (in < 0) in = 0; }
+        if (s_pps * 10 < dt) { u = -dv; s_urate = (3 * s_urate + u * 6000 / dt) / 4; }
+        else { u = urate() * dt / 6000; in = dv + u; if (in < 0) in = 0; }
         um = u > 0 ? u * 6000 / dt : 0;
         im = in > 0 && s_pps > 0 ? in * 6000 / s_pps : 0;
     }

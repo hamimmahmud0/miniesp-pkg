@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 {
     int days = argc > 1 ? atoi(argv[1]) : 8;
     srand(1); if (argc > 2) now_s = (unsigned)strtoul(argv[2], 0, 10);
-    char b0[]="wtms",b1[]="config",b2[]="full_mm=205",b3[]="ml_cm=8517",b4[]="vol_l=1000",b5[]="hist=300",b6[]="interval=15"; char *a[] = { b0,b1,b2,b3,b4,b5,b6 };
+    char b0[]="wtms",b1[]="config",b2[]="full_mm=205",b3[]="ml_cm=8517",b4[]="vol_l=1000",b5[]="hist=60",b6[]="interval=5"; char *a[] = { b0,b1,b2,b3,b4,b5,b6 };
     wtms_main(7, a);
     char r0[]="wtms",r1[]="run"; char *r[] = { r0, r1 };
     int rm_ok = system("rm -f www_tank/*.csv www_tank/state.json");
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
         double inn = pump ? 32.0*dtmin : 0;
         vol += inn - u; if (vol > 1000) vol = 1000;
         dayuse[(now_s/86400)-day0] += u; dayin[(now_s/86400)-day0] += inn;
-        if (step % 3 == 0) wtms_main(2, r);                     // the service ticks every 5 s; the program gates itself to every 15 s
+        wtms_main(2, r);                     // the service ticks every 5 s; the program gates itself to every 15 s
     }
     printf("true daily usage / intake (L):\n");
     for (int i=0;i<=days;i++) printf("  day %d  use %.1f  in %.1f\n", i, dayuse[i], dayin[i]);
