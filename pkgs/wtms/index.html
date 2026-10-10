@@ -71,7 +71,7 @@
   <div class="row"><label for="a_bud">Daily budget<small>litres per day, 0 = off</small></label><input id="a_bud" type="number" min="0" step="10" inputmode="numeric"></div>
   <div class="sub">Checks and limits run in this browser and are saved on this device only.</div></div>
 </div>
-<div class="card" style="margin-top:16px"><h2><svg class="ic"><use href="#i-clock"/></svg>Daily water usage</h2>
+<div class="card"><h2><svg class="ic"><use href="#i-clock"/></svg>Daily water usage</h2>
  <div class="toolbar"><div class="tabs" id="dtabs" role="group" aria-label="Days shown"><button data-d="7">7 days</button><button data-d="14" class="cur">14 days</button><button data-d="30">30 days</button><button data-d="m">Monthly</button></div><div class="legend" id="lg_day"></div></div>
  <div class="chartbox"><canvas id="c_day" role="img" aria-label="Water used per day in litres"></canvas></div><div class="sub" id="r_day"></div><div class="btns exp"><button class="b sec" type="button" data-x="history">Export level history (CSV)</button><button class="b sec" type="button" data-x="daily">Export daily totals (CSV)</button><button class="b sec" type="button" data-x="runs">Export pump runs (CSV)</button></div></div>
 <p class="sub note">Usage is measured from the level: while the pump is idle, usage is the drop in volume; while it runs, the recent idle usage rate is assumed to continue, so the pump intake rate and daily totals are estimates (the sensor resolves about 1&nbsp;L). Rates are averaged over a few samples to hide the sensor's 1&nbsp;L steps.</p>
