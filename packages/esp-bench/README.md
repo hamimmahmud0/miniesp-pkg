@@ -35,4 +35,4 @@ Suites:
 ## Notes
 - The miniesp firmware is **single-core** (`CONFIG_FREERTOS_UNICORE`, needed for the 98.8 KB IRAM pool that holds program files), so the 2nd ESP32 core is not running. On it `native` shows core 0 only, `load` is skipped and the two-core columns are empty. On a board with PSRAM the **psram firmware variant** (miniesp `tools/build.sh psram`, `tools/flash.sh`) is dual-core: the program files then live in PSRAM, `esp-bench` shows the 1-core vs 2-core scaling and the `load` test, and the header line shows the PSRAM size. That variant is compile-checked only (no PSRAM board tested).
 - Results vary with Wi-Fi activity on core 0 (run twice, compare `quick` with `long`).
-- Needs firmware ABI 6 (`sys_bench`, `SI_CORES`); older firmware: esp-bench refuses to run.
+- Needs firmware ABI 6 with the benchmark syscall (`sys_bench`, `SI_CORES`): build the firmware with `CONFIG_MINIESP_BENCH=y` (the PSRAM variant has it; the standard image leaves it out to stay small, and then esp-bench fails to load).
