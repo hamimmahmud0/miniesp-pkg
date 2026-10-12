@@ -79,9 +79,9 @@ int main(int argc, char **argv)
         if (step % 12 == 0) fprintf(truth, "%u,%.1f\n", now_s, vol);                     // the service ticks every 5 s; the program gates itself to every 15 s
     }
     fclose(truth);
-    { char l0[]="wtms",l1[]="log",l2[]="6"; char *lg[]={l0,l1,l2}; printf("--- wtms log 6 ---\n"); wtms_main(3, lg); }
     printf("true daily usage / intake (L):\n");
     for (int i=0;i<=days;i++) printf("  day %d  use %.1f  in %.1f\n", i, dayuse[i], dayin[i]);
     return 0;
 }
 int sys_argc(void){return 0;} int sys_arg(int i,char*b,int n){return -1;}
+int sys_log(const char *m){ FILE *f=fopen("www_tank/klog.txt","a"); if(f){fprintf(f,"%s\n",m); fclose(f);} return 0; }

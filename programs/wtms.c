@@ -112,40 +112,32 @@ static void sort(int *a, int n) { for (int i = 1; i < n; i++) { int v = a[i], j 
 
 static int g_t100 = 2000, g_have_t;      // temperature, 1/100 C
 
-/* ---------------- persistent log: /log/wtms.log, rotated into /log/wtms.1 ---------------- */
-// The two files together stay below min(512 KB, free filesystem space - 96 KB): when the active one is half the cap it replaces the old one.
+/* ---------------- log: into the firmware's kernel log (/log/kernel.log, kernel.1; sent over MQTT when a file fills up; read with `klog`) ---------------- */
 // What is logged: events (pump start/stop with the reason, faults, commands, MQTT / relay-node changes, config changes), every error with its
 // context (sensor echo statistics, memory, Wi-Fi, filesystem), missed control cycles and reboots, and a status line every 30 minutes.
-static const char *LOG_A = "/log/wtms.log", *LOG_B = "/log/wtms.1";
+// Lines starting with "E " / "W " are logged as errors / warnings (the kernel log writes those to flash within 10 s).
 static int g_mn, g_mlo, g_mmed, g_mhi, g_magree, g_mto, g_mstuck, g_mbad, g_mwhy, g_mdist;     // last measure(): echoes, spread (us), agreeing, timeouts, stuck-high, out of window, why it failed
 static const char *WHY[] = { "ok", "too few valid echoes", "echoes disagree (noise)", "distance outside the tank" };
-
-static int fsz(const char *p) { int n = sys_fsize(p); return n < 0 ? 0 : n; }
-
-static int log_cap(void)
-{
-    int avail = sys_sysinfo(SI_FS_TOTAL) - sys_sysinfo(SI_FS_USED) + fsz(LOG_A) + fsz(LOG_B) - 96 * 1024;
-    int cap = 512 * 1024;
-    if (avail < cap) cap = avail;
-    return cap < 16384 ? 16384 : cap;
-}
 
 static void wlog(char lvl, const char *fmt, ...)
 {
     char l[420]; int o = 0;
-    unsigned t = sys_time();
-    if (t) { int lt[8]; sys_localtime(t, lt, 32); o = m_snprintf(l, sizeof l, "%d-%02d-%02d %02d:%02d:%02d", lt[5], lt[4] + 1, lt[3], lt[2], lt[1], lt[0]); }
-    else o = m_snprintf(l, sizeof l, "up+%ds", sys_sysinfo(SI_UPTIME_S));
-    o += m_snprintf(l + o, (int)sizeof l - o, " %c ", lvl);
+    l[o++] = lvl == 'E' || lvl == 'W' ? lvl : 'I'; l[o++] = ' ';
     va_list ap; va_start(ap, fmt);
     o += m_vsnprintf(l + o, (int)sizeof l - o, fmt, ap);
     va_end(ap);
-    if (o > (int)sizeof l - 2) o = sizeof l - 2;
-    l[o++] = '\n';
-    if (sys_stat("/log") < 0) sys_mkdir("/log");
-    if (fsz(LOG_A) + o > log_cap() / 2) sys_rename(LOG_A, LOG_B);
-    int fd = sys_open(LOG_A, 2);
-    if (fd >= 0) { sys_write(fd, l, o); sys_close(fd); }
+    if (o > (int)sizeof l - 1) o = sizeof l - 1;
+    l[o] = 0;
+    // the kernel log cuts lines at ~250 characters: send long messages in pieces
+    for (int i = 0, e; i < o; i = e) {
+        e = i + 200 < o ? i + 200 : o;
+        if (e < o) { int k = e; while (k > i + 120 && l[k] != ' ') k--; if (l[k] == ' ') e = k + 1; }       // break at a space
+        char piece[216]; int k = 0;
+        if (i) { piece[k++] = l[0]; piece[k++] = ' '; piece[k++] = '.'; piece[k++] = '.'; piece[k++] = ' '; }
+        for (int j = i; j < e; j++) piece[k++] = l[j];
+        piece[k] = 0;
+        sys_log(piece);
+    }
 }
 
 // memory, Wi-Fi and filesystem figures for an error line
@@ -564,38 +556,6 @@ static const char *set_cfg(int last, char **argv, int first)
     return cfg_validate_save();
 }
 
-#ifndef CGI_BUILD
-// `wtms log [N]`: the last N lines (default 40) of the log, oldest first (reads the old file too when the current one is short)
-static int log_count(const char *path)
-{
-    int fd = sys_open(path, 0), n = 0, r;
-    if (fd < 0) return 0;
-    char b[256];
-    while ((r = sys_read(fd, b, sizeof b)) > 0) for (int i = 0; i < r; i++) if (b[i] == '\n') n++;
-    sys_close(fd);
-    return n;
-}
-static void log_print(const char *path, int skip)
-{
-    int fd = sys_open(path, 0), r, line = 0;
-    if (fd < 0) return;
-    char b[256];
-    while ((r = sys_read(fd, b, sizeof b)) > 0) {
-        int from = 0;
-        for (int i = 0; i < r; i++) if (b[i] == '\n') { if (line >= skip) m_write(1, b + from, i + 1 - from); line++; from = i + 1; }
-        if (from < r && line >= skip) m_write(1, b + from, r - from);
-    }
-    sys_close(fd);
-}
-static void show_log(int want)
-{
-    int a = log_count(LOG_B), b = log_count(LOG_A), skip = a + b - want;
-    if (skip < 0) skip = 0;
-    if (skip < a) log_print(LOG_B, skip);
-    log_print(LOG_A, skip > a ? skip - a : 0);
-    m_printf("-- %d + %d lines in %s (%d + %d bytes, cap %d KB)\n", a, b, "/log", fsz(LOG_B), fsz(LOG_A), log_cap() / 1024);
-}
-#endif
 
 #ifndef NO_WEB          // only the web page's copy (/www/cgi-bin/wtms.aot) serves the dashboard API: the service and the command line are smaller without it
 /* ---------------- web (CGI) interface: /cgi-bin/wtms?web+SUB+TOKEN+args ---------------- */
@@ -1076,9 +1036,6 @@ int main(int argc, char **argv)
         m_puts("saved\n");
         return 0;
     }
-#ifndef CGI_BUILD
-    if (eq(c, "log")) { show_log(argc > 2 && m_atoi(argv[2]) > 0 ? m_atoi(argv[2]) : 40); return 0; }
-#endif
 #ifndef NO_WEB
     if (eq(c, "web")) return web(argc, argv);
 #endif
@@ -1109,6 +1066,6 @@ int main(int argc, char **argv)
         return run_cycle();
     }
     if (eq(c, "discover")) { s_disc = 0; save("tank.st", STT, N(STT)); return run_cycle(); }
-    m_eputs("usage: wtms setup [--headless] | run | status | read | config [key=value ...] | cmd reset|force_on[:min]|force_off[:min]|release|pump_on|pump_off | passwd NEW | discover | log [N]\n");
+    m_eputs("usage: wtms setup [--headless] | run | status | read | config [key=value ...] | cmd reset|force_on[:min]|force_off[:min]|release|pump_on|pump_off | passwd NEW | discover\n");
     return 2;
 }
