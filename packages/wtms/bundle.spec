@@ -1,13 +1,13 @@
 # wtms bundle (read by tools/mkbundle.py): builds the program, hashes every file, writes pkgs/wtms/ and the journal entry.
 name wtms
 # needs the miniesp web design system (/style.css, /ui.js; miniesp docs/UI_GUIDE.md)
-version 1.3.5
+version 1.3.6
 abi 4
 # program SOURCE.c -> DEST on the board (built with programs/build.sh)
-program ../../programs/wtms.c -> /esp/.local/bin/wtms.aot
+program ../../programs/wtms.c -> /esp/.local/bin/wtms.aot flags=-DNO_WEB
 # wtmsd = the same program without `setup` (40 KB instead of 57 KB): used by the service and the web page's CGI, because a big
 # program may fail to load while an SSH session has fragmented RAM
-program ../../programs/wtms.c -> /esp/.local/bin/wtmsd.aot flags=-DNO_SETUP name=wtmsd.aot
+program ../../programs/wtms.c -> /esp/.local/bin/wtmsd.aot flags=-DNO_SETUP,-DNO_WEB name=wtmsd.aot
 # the CGI copy is a smaller build (no setup, no Home Assistant discovery): a 45 KB program fails to load there when RAM is fragmented
 program ../../programs/wtms.c -> /www/cgi-bin/wtms.aot flags=-DCGI_BUILD name=wtmsc.aot
 dir /www/tank

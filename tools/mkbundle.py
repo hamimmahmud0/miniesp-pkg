@@ -39,7 +39,7 @@ for k, rest in ops:
     if k in ('program', 'file'):
         src, _, dest = [x.strip() for x in rest.partition('->')]
         src = os.path.normpath(os.path.join(pkgdir, src))
-        opts = dict(t.split('=', 1) for t in dest.split()[1:] if '=' in t)     # optional: flags=-DX  name=FILE.aot
+        opts = dict(t.split('=', 1) for t in dest.split()[1:] if '=' in t)     # optional: flags=-DX[,-DY]  name=FILE.aot
         dest = dest.split()[0]
         fname = opts.get('name', os.path.basename(dest))
         target = os.path.join(out, fname)
@@ -47,7 +47,7 @@ for k, rest in ops:
             tmp = os.path.join(out, '.build')
             os.makedirs(tmp, exist_ok=True)
             subprocess.run(['./build.sh', os.path.basename(src)], cwd=os.path.dirname(src),
-                           env=dict(os.environ, OUT=tmp, CFLAGS_EXTRA=opts.get('flags', '')), check=True, stdout=subprocess.DEVNULL)
+                           env=dict(os.environ, OUT=tmp, CFLAGS_EXTRA=opts.get('flags', '').replace(',', ' ')), check=True, stdout=subprocess.DEVNULL)
             os.replace(os.path.join(tmp, os.path.splitext(os.path.basename(src))[0] + '.aot'), target)
             shutil.rmtree(tmp, ignore_errors=True)
         else:

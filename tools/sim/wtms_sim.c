@@ -32,7 +32,8 @@ int sys_write(int fd, const void *b, int n){ if(fd==1||fd==2) return (int)fwrite
 int sys_fsize(const char *p){ char q[200]; mkpath(q,p); FILE *f=fopen(q,"rb"); if(!f) return -1; fseek(f,0,SEEK_END); int n=ftell(f); fclose(f); return n; }
 int sys_rename(const char *a, const char *b){ char x[200],y[200]; mkpath(x,a); mkpath(y,b); return rename(x,y); }
 int sys_mkdir(const char *p){ return 0; }
-int sys_stat(const char *p){ return -1; }
+int sys_stat(const char *p){ return 2; }
+int sys_sysinfo(int w){ switch(w){ case 0: return 100000; case 1: return 77000; case 2: return 290308; case 3: return 1400; case 4: return 32768; case 5: return 97000; case 7: return 173000; case 9: return getenv("FSUSED") ? atoi(getenv("FSUSED")) : 700000; case 10: return 1179648; case 11: return -60; } return 0; }
 unsigned sys_time(void){ return now_s; }
 unsigned sys_millis(void){ return (unsigned)(now_s*1000u); }
 int sys_localtime(unsigned e, int *o, int b){ time_t t=e; struct tm tm; gmtime_r(&t,&tm); o[0]=tm.tm_sec;o[1]=tm.tm_min;o[2]=tm.tm_hour;o[3]=tm.tm_mday;o[4]=tm.tm_mon;o[5]=tm.tm_year+1900;o[6]=tm.tm_wday;o[7]=tm.tm_yday; return 0; }
@@ -78,6 +79,7 @@ int main(int argc, char **argv)
         if (step % 12 == 0) fprintf(truth, "%u,%.1f\n", now_s, vol);                     // the service ticks every 5 s; the program gates itself to every 15 s
     }
     fclose(truth);
+    { char l0[]="wtms",l1[]="log",l2[]="6"; char *lg[]={l0,l1,l2}; printf("--- wtms log 6 ---\n"); wtms_main(3, lg); }
     printf("true daily usage / intake (L):\n");
     for (int i=0;i<=days;i++) printf("  day %d  use %.1f  in %.1f\n", i, dayuse[i], dayin[i]);
     return 0;

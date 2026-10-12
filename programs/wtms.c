@@ -47,6 +47,7 @@ static const ik CFG[] = {
     { "interval", &c_interval, 0 }, { "samples", &c_samples, 0 }, { "jump_pct", &c_jump, 0 }, { "good_n", &c_goodn, 0 }, { "hist_kb", &c_histkb, 0 }, { "temp_c", &c_tempc, 0 }, { "blind_s", &c_blind, 0 },
 };
 static int s_force, s_funtil, s_good, s_ema = -1, s_since, s_start, s_lastoff, s_fault, s_lastrun, s_lasthist, s_disc, s_jumps, s_hold, s_goodlast;
+static int s_lo, s_badn, s_lhb, s_lmem, s_lerr, s_lsup;       // log state (saved): flags of the last cycle, failed sensor cycles in a row, last status line / low-memory warning time
 // Water accounting (volumes in decilitres): pv = volume at the previous history sample + 1 (0 = none), pps = pump seconds since then, urate = recent idle
 // usage in ml/min, dd = date (yyyymmdd) of the running day, du/di/dps/dr = that day's usage, pump intake (dL), pump seconds, pump runs, lr* = last pump run
 static int s_pv, s_pps, s_urate, s_dd, s_du, s_di, s_dps, s_dr, s_lrl, s_lrs, s_lrt;
@@ -55,6 +56,7 @@ static const ik STT[] = {
     { "lastrun", &s_lastrun, 0 }, { "lasthist", &s_lasthist, 0 }, { "disc", &s_disc, 0 }, { "jumps", &s_jumps, 0 }, { "hold", &s_hold, 0 }, { "gl", &s_goodlast, 0 },
     { "pv", &s_pv, 0 }, { "pps", &s_pps, 0 }, { "urate", &s_urate, 0 }, { "dd", &s_dd, 0 }, { "du", &s_du, 0 }, { "di", &s_di, 0 }, { "dps", &s_dps, 0 },
     { "dr", &s_dr, 0 }, { "lrl", &s_lrl, 0 }, { "lrs", &s_lrs, 0 }, { "lrt", &s_lrt, 0 },
+    { "lo", &s_lo, 0 }, { "bad", &s_badn, 0 }, { "lhb", &s_lhb, 0 }, { "lmem", &s_lmem, 0 }, { "lerr", &s_lerr, 0 }, { "lsup", &s_lsup, 0 },
 };
 #define N(t) ((int)(sizeof(t) / sizeof((t)[0])))
 #define DISC_VER 3
@@ -110,24 +112,84 @@ static void sort(int *a, int n) { for (int i = 1; i < n; i++) { int v = a[i], j 
 
 static int g_t100 = 2000, g_have_t;      // temperature, 1/100 C
 
-// Distance sensor-to-water in mm (median of 7 echoes, speed of sound corrected for temperature), or -1 on failure.
+/* ---------------- persistent log: /log/wtms.log, rotated into /log/wtms.1 ---------------- */
+// The two files together stay below min(512 KB, free filesystem space - 96 KB): when the active one is half the cap it replaces the old one.
+// What is logged: events (pump start/stop with the reason, faults, commands, MQTT / relay-node changes, config changes), every error with its
+// context (sensor echo statistics, memory, Wi-Fi, filesystem), missed control cycles and reboots, and a status line every 30 minutes.
+static const char *LOG_A = "/log/wtms.log", *LOG_B = "/log/wtms.1";
+static int g_mn, g_mlo, g_mmed, g_mhi, g_magree, g_mto, g_mstuck, g_mbad, g_mwhy, g_mdist;     // last measure(): echoes, spread (us), agreeing, timeouts, stuck-high, out of window, why it failed
+static const char *WHY[] = { "ok", "too few valid echoes", "echoes disagree (noise)", "distance outside the tank" };
+
+static int fsz(const char *p) { int n = sys_fsize(p); return n < 0 ? 0 : n; }
+
+static int log_cap(void)
+{
+    int avail = sys_sysinfo(SI_FS_TOTAL) - sys_sysinfo(SI_FS_USED) + fsz(LOG_A) + fsz(LOG_B) - 96 * 1024;
+    int cap = 512 * 1024;
+    if (avail < cap) cap = avail;
+    return cap < 16384 ? 16384 : cap;
+}
+
+static void wlog(char lvl, const char *fmt, ...)
+{
+    char l[420]; int o = 0;
+    unsigned t = sys_time();
+    if (t) { int lt[8]; sys_localtime(t, lt, 32); o = m_snprintf(l, sizeof l, "%d-%02d-%02d %02d:%02d:%02d", lt[5], lt[4] + 1, lt[3], lt[2], lt[1], lt[0]); }
+    else o = m_snprintf(l, sizeof l, "up+%ds", sys_sysinfo(SI_UPTIME_S));
+    o += m_snprintf(l + o, (int)sizeof l - o, " %c ", lvl);
+    va_list ap; va_start(ap, fmt);
+    o += m_vsnprintf(l + o, (int)sizeof l - o, fmt, ap);
+    va_end(ap);
+    if (o > (int)sizeof l - 2) o = sizeof l - 2;
+    l[o++] = '\n';
+    if (sys_stat("/log") < 0) sys_mkdir("/log");
+    if (fsz(LOG_A) + o > log_cap() / 2) sys_rename(LOG_A, LOG_B);
+    int fd = sys_open(LOG_A, 2);
+    if (fd >= 0) { sys_write(fd, l, o); sys_close(fd); }
+}
+
+// memory, Wi-Fi and filesystem figures for an error line
+#ifndef CGI_BUILD
+#define wlogx wlog
+#else
+#define wlogx(...) ((void)0)      // the web page's copy logs only the short event lines (it must stay small)
+#endif
+static const char *ctx(void)
+{
+    static char b[140];
+    m_snprintf(b, sizeof b, "[up %ds heap %d/min %d/blk %d iram8 %d exec %d fs %dk rssi %d mqtt %d]", sys_sysinfo(SI_UPTIME_S), sys_sysinfo(SI_DRAM_FREE),
+               sys_sysinfo(SI_DRAM_MINFREE), sys_sysinfo(SI_DRAM_LARGEST), sys_sysinfo(SI_IRAM8_FREE), sys_sysinfo(SI_EXEC_FREE), sys_sysinfo(SI_FS_USED) / 1024,
+               sys_sysinfo(SI_RSSI), sys_mqtt_state());
+    return b;
+}
+
+// Distance sensor-to-water in mm (median of 7 echoes, speed of sound corrected for temperature), or -1 on failure (g_mwhy says why).
 static int measure(void)
 {
     g_t100 = c_tempc * 100;                                    // assumed air temperature when there is no DS18B20
     if (c_temp > 0) { int t = sys_ds18b20(c_temp); if (t > -9000) { g_t100 = t; g_have_t = 1; } }
     int v[15], n = 0;
+    g_mto = g_mstuck = g_mbad = g_mlo = g_mmed = g_mhi = g_magree = g_mdist = 0;
     for (int i = 0; i < c_samples; i++) {
         int us = sys_sonar_pulse(c_trig, c_echo, 25000);
         if (us >= 150 && us <= 24000) v[n++] = us;
+        else if (us == -1) g_mto++;                            // no echo started
+        else if (us == -2) g_mstuck++;                         // echo line stuck high
+        else g_mbad++;                                         // shorter than the dead zone / longer than the tank
         sys_sleep_ms(60);
     }
+    g_mn = n; g_mwhy = 1;
     if (n < (c_samples + 1) / 2) return -1;                    // at least half of the echoes must be valid
     sort(v, n);
+    g_mlo = v[0]; g_mmed = v[n / 2]; g_mhi = v[n - 1];
     int agree = 0;                                             // and a majority must agree with the median within ~1 cm (60 us): a damp or noisy sensor
     for (int i = 0; i < n; i++) if (v[i] - v[n / 2] < 60 && v[n / 2] - v[i] < 60) agree++;      // returns scattered echoes whose median would be a false level
+    g_magree = agree; g_mwhy = 2;
     if (agree < c_samples / 2 + 1) return -1;
     int d = (int)((long long)v[n / 2] * (3313 + g_t100 * 606 / 10000) / 20000);
+    g_mdist = d; g_mwhy = 3;
     if (d < 25 || d > c_empty + 150) return -1;           // closer than the sensor's dead zone or farther than the tank floor: not a real water echo
+    g_mwhy = 0;
     return d;
 }
 
@@ -146,7 +208,13 @@ static int level_pm(int d_mm)
 
 static char tb[128], pb[760];
 static void topic(const char *fmt) { m_snprintf(tb, sizeof tb, fmt, c_name); }
-static int pub(const char *t, const char *p, int retain) { return sys_mqtt_pub(t, p, (int)m_strlen(p), retain, 1); }
+static int g_pubrc, g_pubfail; static char g_pubt[64];                // a publish failed this cycle (logged once by run_cycle)
+static int pub(const char *t, const char *p, int retain)
+{
+    int r = sys_mqtt_pub(t, p, (int)m_strlen(p), retain, 1);
+    if (r < 0 && !g_pubfail) { g_pubfail = 1; g_pubrc = r; m_snprintf(g_pubt, sizeof g_pubt, "%s", t); }
+    return r;
+}
 
 static int urate(void) { return s_urate > 0 ? s_urate : 0; }          // recent idle usage ml/min (the stored value is signed so sensor noise averages out)
 
@@ -170,14 +238,20 @@ static int mk_state(char *b, int n, int pm, int dist, const char *pump, int auto
                       s_lrl / 10, iabs(s_lrl) % 10, s_lrs, s_lrt);
 }
 
-static void write_file(const char *path, const char *s) { int fd = sys_open(path, 1); if (fd >= 0) { sys_write(fd, s, (int)m_strlen(s)); sys_close(fd); } }
+static int g_fserr; static const char *g_fspath;                    // a file write failed this cycle (logged once by run_cycle)
+static void write_file(const char *path, const char *s)
+{
+    int fd = sys_open(path, 1), n = (int)m_strlen(s);
+    if (fd < 0 || sys_write(fd, s, n) != n) { g_fserr = 1; g_fspath = path; }
+    if (fd >= 0) sys_close(fd);
+}
 
 static void append_line(const char *path, const char *old, int max, const char *l, int n)
 {
     if (sys_fsize(path) > max) sys_rename(path, old);
     int fd = sys_open(path, 2);
-    if (fd < 0) return;
-    sys_write(fd, l, n);
+    if (fd < 0) { g_fserr = 1; g_fspath = path; return; }
+    if (sys_write(fd, l, n) != n) { g_fserr = 1; g_fspath = path; }
     sys_close(fd);
 }
 
@@ -277,6 +351,12 @@ static int run_cycle(void)
         if (now - (unsigned)s_lastrun < every - 2) return 0;
     }
     sys_mkdir(DIR);
+    int prev_fault = s_fault, lo = s_lo;
+    if (s_lastrun && now > (unsigned)s_lastrun + 60 && now > (unsigned)s_lastrun + 3u * (unsigned)c_interval) {        // the service did not manage a cycle for a long time
+        unsigned gap = now - (unsigned)s_lastrun, up = (unsigned)sys_sysinfo(SI_UPTIME_S);
+        if (up < gap) wlogx('W', "restart: the board booted %us ago, no control cycle for %us %s", up, gap, ctx());
+        else wlogx('E', "no control cycle for %us although the board was up: the service skipped runs (busy / program load failed: out of memory?) %s", gap, ctx());
+    }
     int was_since = s_since, prev_run = s_lastrun;                      // to spot the end of a pump run and to count pump seconds
     char node[64]; int i = 0;                                         // relay-node base topic = everything before "/relay/"
     {
@@ -296,6 +376,19 @@ static int run_cycle(void)
     // ---- measure ----
     int d = measure(), pm = -1, sensor_ok = d >= 0;
     s_good = sensor_ok ? (s_good < 100 ? s_good + 1 : s_good) : 0;
+    int sens_logged = 0;                                       // a noisy sensor must not flood the log: one failure line per 5 minutes, the rest is counted
+    if (sensor_ok && s_badn) { if (s_badn >= 4) wlogx('I', "sensor recovered after %d failed cycles (%us without a reading)", s_badn, now - (unsigned)s_goodlast); s_badn = 0; }
+    else if (!sensor_ok) {
+        s_badn++;
+        if ((s_badn == 1 || s_badn % 20 == 0) && now - (unsigned)s_lerr < 300) s_lsup++;
+        else if (s_badn == 1 || s_badn % 20 == 0) {
+            sens_logged = 1; s_lerr = (int)now;
+            wlogx('E', "sensor failure #%d (+%d suppressed): %s; valid %d/%d, no-echo %d, stuck %d, out-of-window %d, echo us min/med/max %d/%d/%d, agreeing %d, dist %d mm, pump %s, last good %us ago %s",
+                 s_badn, s_lsup, WHY[g_mwhy], g_mn, c_samples, g_mto, g_mstuck, g_mbad, g_mlo, g_mmed, g_mhi, g_magree, g_mdist, s_since ? "ON" : "off",
+                 s_goodlast ? now - (unsigned)s_goodlast : 0u, ctx());
+            s_lsup = 0;
+        }
+    }
     if (sensor_ok) {
         int raw = level_pm(d);
         if (s_ema < 0) s_ema = raw;
@@ -316,14 +409,19 @@ static int run_cycle(void)
     int ps = sys_mqtt_get(t_state, buf, sizeof buf - 1), pump_known = ps > 0, pump_on = 0;
     if (pump_known) { buf[ps] = 0; pump_on = eq(buf, "ON"); }
     int mq = sys_mqtt_state() == 2;
+    if (lo & 128) {
+        if (mq != !!(lo & 2)) wlogx(mq ? 'I' : 'W', "MQTT %s %s", mq ? "connected" : "DISCONNECTED", ctx());
+        if (online != !!(lo & 4)) wlogx(online ? 'I' : 'E', "relay node %s", online ? "online" : "OFFLINE");
+    }
 
     // ---- commands ----
-    if (mq && new_cmd(t_auto, buf, sizeof buf, now)) { c_auto = eq(buf, "ON") || eq(buf, "1"); save("tank.cfg", CFG, N(CFG)); }
+    if (mq && new_cmd(t_auto, buf, sizeof buf, now)) { wlog('I', "auto mode %s (mqtt)", buf); c_auto = eq(buf, "ON") || eq(buf, "1"); save("tank.cfg", CFG, N(CFG)); }
     int want_on = 0, want_off = 0;
     int got = 0;
     if (g_local_cmd[0]) { for (int k = 0; k < (int)sizeof buf - 1 && g_local_cmd[k]; k++) buf[k] = g_local_cmd[k], buf[k + 1] = 0; got = 1; }
     else if (mq && new_cmd(t_cmd, buf, sizeof buf, now)) got = 1;
     if (got) {
+        wlog('I', "command %s (%s)", buf, g_local_cmd[0] ? "local" : "mqtt");
         int fmin = 0;                                                     // "force_on:30" -> 30 minutes
         for (char *q = buf; *q; q++) if (*q == ':') { fmin = m_atoi(q + 1); *q = 0; break; }
         if (eq(buf, "force_on")) { s_force = 1; if (fmin <= 0) fmin = c_maxrun; if (fmin > 1440) fmin = 1440; s_funtil = (int)now + fmin * 60; }
@@ -336,7 +434,7 @@ static int run_cycle(void)
     }
 
     // ---- pump control ----
-    const char *act = "none";
+    const char *act = "none", *why = "";
     if (s_force && s_funtil && now >= (unsigned)s_funtil) { s_force = 0; s_funtil = 0; }          // forced period over
     if (s_force == 1 && sensor_ok && pm >= 1000) { s_force = 0; s_funtil = 0; }                    // overflow guard even when forced
     if (mq && s_force == 1) {                                                // forced ON: ignores auto mode, thresholds and faults
@@ -351,11 +449,11 @@ static int run_cycle(void)
             if (!s_since) { s_since = (int)now; s_start = pm; }                 // started by someone else: adopt it
             unsigned run = now - (unsigned)s_since;
             int stop = 0;
-            if (!sensor_ok && !blind) stop = 1;
-            else if (pm >= c_off * 10) stop = 1;
-            else if (want_off) { stop = 1; s_hold = (int)now + c_rest * 60; }
-            else if (run > (unsigned)c_maxrun * 60) { stop = 1; s_fault = F_MAXRUN; }
-            else if (sensor_ok && run >= (unsigned)c_flowmin * 60 && (c_minin > 0 ? pm_run_dl(pm, (int)run) * 6000 / (int)run < c_minin * 100 : pm - s_start < c_rise)) { stop = 1; s_fault = F_NOFLOW; }
+            if (!sensor_ok && !blind) { stop = 1; why = "no valid level reading"; }
+            else if (pm >= c_off * 10) { stop = 1; why = "level reached off_pct"; }
+            else if (want_off) { stop = 1; why = "pump_off command"; s_hold = (int)now + c_rest * 60; }
+            else if (run > (unsigned)c_maxrun * 60) { stop = 1; why = "max_run exceeded"; s_fault = F_MAXRUN; }
+            else if (sensor_ok && run >= (unsigned)c_flowmin * 60 && (c_minin > 0 ? pm_run_dl(pm, (int)run) * 6000 / (int)run < c_minin * 100 : pm - s_start < c_rise)) { stop = 1; why = "no flow"; s_fault = F_NOFLOW; }
             if (stop) { pub(t_set, "OFF", 0); s_since = 0; s_lastoff = (int)now; act = "stop"; }
             else { pub(t_set, "ON", 0); act = "run"; }                          // keep-alive for the relay's auto-off timer
         } else {
@@ -363,9 +461,21 @@ static int run_cycle(void)
             int can = sensor_ok && s_good >= c_goodn && s_fault == F_NONE && online && pm < c_off * 10;     // 3 good readings in a row before the first start
             int rested = now - (unsigned)s_lastoff >= (unsigned)c_rest * 60 && (unsigned)s_hold <= now;
             if (can && ((c_auto && pm <= c_on * 10 && rested) || want_on)) {
-                pub(t_set, "ON", 0); s_since = (int)now; s_start = pm; act = "start"; pump_on = 1;
+                pub(t_set, "ON", 0); s_since = (int)now; s_start = pm; act = "start"; pump_on = 1; why = want_on ? "pump_on command" : "level at/below on_pct";
             }
         }
+    }
+    if (blind && sens_logged && s_since) wlogx('W', "pump keeps running without a level reading (blind_s=%d)", c_blind);
+    if ((act[0] == 's' && act[1] != 'o') || (pump_known && (lo & 128) && pump_on != !!(lo & 8)))          // start / stop, or the pump state changed (forced, adopted, switched elsewhere)
+        wlogx('I', "pump %s: %s%s%s, level %d.%d%% dist %d.%d cm, run %us", pump_on ? "ON" : "OFF", act, why[0] ? " - " : "", why, pm / 10, pm % 10, d / 10, d % 10,
+             was_since ? now - (unsigned)was_since : 0u);
+    if (s_fault != prev_fault) {
+        if (s_fault == F_NONE) wlogx('I', "fault %s cleared", FAULTS[prev_fault]);
+        else if (s_fault == F_MAXRUN) wlogx('E', "fault max_run: pump ran %us (limit %d min), level %d.%d%% -> %d.%d%% %s", now - (unsigned)was_since, c_maxrun, s_start / 10, s_start % 10, pm / 10, pm % 10, ctx());
+        else if (s_fault == F_NOFLOW) wlogx('E', "fault no_flow: after %us the level moved %d.%d%% -> %d.%d%% (needs +%d per mille in %d min), intake %d ml/min, relay %s %s", now - (unsigned)was_since,
+                                           s_start / 10, s_start % 10, pm / 10, pm % 10, c_rise, c_flowmin, was_since && now > (unsigned)was_since ? pm_run_dl(pm, (int)(now - (unsigned)was_since)) * 6000 / (int)(now - (unsigned)was_since) : 0,
+                                           pump_known ? (pump_on ? "ON" : "OFF") : "unknown", ctx());
+        else wlogx('E', "fault %s latched: no valid distance reading for %us (pump %s) %s", FAULTS[s_fault], s_goodlast ? now - (unsigned)s_goodlast : 0u, s_since ? "ON" : "off", ctx());
     }
     s_lastrun = (int)now;
     if (pump_on && prev_run && (int)now > prev_run) s_pps += (int)now - prev_run > 60 ? 60 : (int)now - prev_run;
@@ -388,6 +498,18 @@ static int run_cycle(void)
         append_line(RUNS, RUNS_OLD, 8000, l, k);
     }
     history(pm, pump_on);
+    // ---- log: errors of this cycle, low memory, periodic status ----
+    if (g_pubfail && !(lo & 16)) wlogx('E', "mqtt publish failed: %s rc %d %s", g_pubt, g_pubrc, ctx());
+    else if (!g_pubfail && (lo & 16)) wlogx('I', "mqtt publishing works again");
+    if (g_fserr && !(lo & 32)) wlogx('E', "file write failed: %s (fs used %d of %d KB) %s", g_fspath, sys_sysinfo(SI_FS_USED) / 1024, sys_sysinfo(SI_FS_TOTAL) / 1024, ctx());
+    else if (!g_fserr && (lo & 32)) wlogx('I', "file writes work again");
+    if ((sys_sysinfo(SI_DRAM_FREE) < 20000 || sys_sysinfo(SI_DRAM_LARGEST) < 8192) && now - (unsigned)s_lmem >= 600) { s_lmem = (int)now; wlogx('W', "low memory %s", ctx()); }
+    if (!s_lhb || now - (unsigned)s_lhb >= 1800) {
+        s_lhb = (int)now;
+        wlogx('I', "status: level %d.%d%% (%d L) dist %d.%d cm pump %s auto %s fault %s runs today %d mqtt %s %s", pm / 10, pm % 10, c_vol * pm / 1000, d / 10, d % 10, pump_on ? "ON" : "OFF",
+             c_auto ? "ON" : "OFF", FAULTS[s_fault], s_dr, mq ? (pump_known ? "ok" : "no-pump-state") : "down", ctx());
+    }
+    s_lo = 128 | (mq << 1) | (online << 2) | (pump_known ? (pump_on && !(act[0] == 's' && act[2] == 'o')) << 3 : lo & 8) | (g_pubfail << 4) | (g_fserr << 5);
     save("tank.st", STT, N(STT));
     if (!g_quiet) m_printf("level %d.%d%% (%d L) dist %d.%d cm pump %s auto %s fault %s act %s mqtt %s\n", pm / 10, pm % 10, c_vol * pm / 1000, d / 10, d % 10,
              pump_on ? "ON" : "OFF", c_auto ? "ON" : "OFF", FAULTS[s_fault], act, mq ? (pump_known ? "ok" : "no-pump-state") : "down");
@@ -422,6 +544,7 @@ static const char *cfg_validate_save(void)
     if (c_tempc < -30 || c_tempc > 60) return "temp_c must be -30..60";
     if (!c_name[0] || !c_pump[0]) return "name and pump must not be empty";
     save("tank.cfg", CFG, N(CFG));
+    wlog('I', "configuration changed");
     s_disc = 0; s_ema = -1; s_jumps = 0; s_good = 0; s_pv = 0; s_pps = 0;
     save("tank.st", STT, N(STT));
     return NULL;
@@ -441,6 +564,40 @@ static const char *set_cfg(int last, char **argv, int first)
     return cfg_validate_save();
 }
 
+#ifndef CGI_BUILD
+// `wtms log [N]`: the last N lines (default 40) of the log, oldest first (reads the old file too when the current one is short)
+static int log_count(const char *path)
+{
+    int fd = sys_open(path, 0), n = 0, r;
+    if (fd < 0) return 0;
+    char b[256];
+    while ((r = sys_read(fd, b, sizeof b)) > 0) for (int i = 0; i < r; i++) if (b[i] == '\n') n++;
+    sys_close(fd);
+    return n;
+}
+static void log_print(const char *path, int skip)
+{
+    int fd = sys_open(path, 0), r, line = 0;
+    if (fd < 0) return;
+    char b[256];
+    while ((r = sys_read(fd, b, sizeof b)) > 0) {
+        int from = 0;
+        for (int i = 0; i < r; i++) if (b[i] == '\n') { if (line >= skip) m_write(1, b + from, i + 1 - from); line++; from = i + 1; }
+        if (from < r && line >= skip) m_write(1, b + from, r - from);
+    }
+    sys_close(fd);
+}
+static void show_log(int want)
+{
+    int a = log_count(LOG_B), b = log_count(LOG_A), skip = a + b - want;
+    if (skip < 0) skip = 0;
+    if (skip < a) log_print(LOG_B, skip);
+    log_print(LOG_A, skip > a ? skip - a : 0);
+    m_printf("-- %d + %d lines in %s (%d + %d bytes, cap %d KB)\n", a, b, "/log", fsz(LOG_B), fsz(LOG_A), log_cap() / 1024);
+}
+#endif
+
+#ifndef NO_WEB          // only the web page's copy (/www/cgi-bin/wtms.aot) serves the dashboard API: the service and the command line are smaller without it
 /* ---------------- web (CGI) interface: /cgi-bin/wtms?web+SUB+TOKEN+args ---------------- */
 // Login: the page sends the password hex-encoded (the CGI argument charset is limited); a random token (valid 7 days, max 6 sessions)
 // is returned and must accompany every other call. The connection is plain HTTP: use this on a trusted LAN only.
@@ -638,6 +795,8 @@ static int web(int argc, char **argv)
     jout("{\"ok\":false,\"error\":\"unknown\"}");
     return 0;
 }
+
+#endif  // NO_WEB
 
 #ifndef NO_SETUP        // the CGI copy (/www/cgi-bin/wtms.aot) is built without setup: smaller, so it also loads while an SSH session fragments RAM
 /* ---------------- setup: interactive or headless configuration, files and service ---------------- */
@@ -917,7 +1076,12 @@ int main(int argc, char **argv)
         m_puts("saved\n");
         return 0;
     }
+#ifndef CGI_BUILD
+    if (eq(c, "log")) { show_log(argc > 2 && m_atoi(argv[2]) > 0 ? m_atoi(argv[2]) : 40); return 0; }
+#endif
+#ifndef NO_WEB
     if (eq(c, "web")) return web(argc, argv);
+#endif
     if (eq(c, "passwd") && argc > 2) {                                       // CLI (ssh): set/replace the web password
         if (m_strlen(argv[2]) < 6) { m_eputs("wtms: password must have at least 6 characters\n"); return 2; }
         sys_kv_set("tank.pw", argv[2], (int)m_strlen(argv[2])); sys_kv_del("tank.tok");
@@ -945,6 +1109,6 @@ int main(int argc, char **argv)
         return run_cycle();
     }
     if (eq(c, "discover")) { s_disc = 0; save("tank.st", STT, N(STT)); return run_cycle(); }
-    m_eputs("usage: wtms setup [--headless] | run | status | read | config [key=value ...] | cmd reset|force_on[:min]|force_off[:min]|release|pump_on|pump_off | passwd NEW | discover\n");
+    m_eputs("usage: wtms setup [--headless] | run | status | read | config [key=value ...] | cmd reset|force_on[:min]|force_off[:min]|release|pump_on|pump_off | passwd NEW | discover | log [N]\n");
     return 2;
 }
